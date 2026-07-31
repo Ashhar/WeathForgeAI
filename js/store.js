@@ -774,3 +774,5 @@ const Store = (() => {
     valuation, projectionBand, portfolio, portfolioBand,
   };
 })();
+
+if (typeof globalThis !== 'undefined') globalThis.Store = Store;

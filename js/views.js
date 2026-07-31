@@ -673,3 +673,5 @@ const Views = (() => {
 
   return { dashboard, holdings, liabilitiesView, assetDetail, projections, settings, notFound };
 })();
+
+if (typeof globalThis !== 'undefined') globalThis.Views = Views;

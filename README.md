@@ -4,12 +4,16 @@ Track, grow and project your whole net worth — every asset you *already own* i
 equity, mutual funds, fixed deposits, EPF/PPF/NPS, small savings, ESOPs/RSUs, gold & silver,
 real estate, crypto — plus your loans, so net worth is honest: **assets − liabilities**.
 
-**Zero build step.** Vanilla HTML/CSS/JS single-page app. Open `index.html` (or serve the folder)
-and it runs, seeded with a demo portfolio persisted to `localStorage`.
+Vanilla HTML/CSS/JS single-page app (no framework), built with Vite so environment
+variables and npm packages work. Without Supabase env vars it runs fully offline,
+seeded with a demo portfolio persisted to `localStorage`; with them (see
+`supabase/README.md`) you get signup/login, a shared read-only demo account and
+per-user cloud data behind Row Level Security.
 
 ```bash
-python3 -m http.server 8000
-# → http://localhost:8000
+npm install
+npm run dev        # → http://localhost:8000
+npm run build      # production bundle in dist/ (Vercel: SPA rewrite in vercel.json)
 ```
 
 ## Screens & navigation

@@ -154,3 +154,5 @@ const Charts = (() => {
 
   return { fan, line, donut, spark, COLORS, compactINR, theme };
 })();
+
+if (typeof globalThis !== 'undefined') globalThis.Charts = Charts;

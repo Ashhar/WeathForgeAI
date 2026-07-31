@@ -1212,3 +1212,5 @@ const Forms = (() => {
 
   return { render, collect, renderLiability, collectLiability };
 })();
+
+if (typeof globalThis !== 'undefined') globalThis.Forms = Forms;

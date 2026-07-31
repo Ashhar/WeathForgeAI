@@ -1,0 +1,20 @@
+{
+  "name": "wealthforge-ai",
+  "private": true,
+  "version": "2.0.0",
+  "description": "WealthForge AI — track, grow & project your net worth",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node tests/run-tests.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "jspdf": "^2.5.2",
+    "jspdf-autotable": "^3.8.4"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

@@ -280,3 +280,5 @@ const UI = (() => {
 })();
 
 document.addEventListener('DOMContentLoaded', UI.boot);
+
+if (typeof globalThis !== 'undefined') globalThis.UI = UI;

@@ -110,3 +110,5 @@ const Insights = (() => {
 
   return { generate };
 })();
+
+if (typeof globalThis !== 'undefined') globalThis.Insights = Insights;

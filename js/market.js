@@ -150,3 +150,5 @@ const Market = (() => {
     dayChangePct, priceHistory,
   };
 })();
+
+if (typeof globalThis !== 'undefined') globalThis.Market = Market;

@@ -351,3 +351,5 @@ const Fin = (() => {
     lognormalBand, deterministicBand, fdBand, addSipToBand, sumBands,
   };
 })();
+
+if (typeof globalThis !== 'undefined') globalThis.Fin = Fin;
