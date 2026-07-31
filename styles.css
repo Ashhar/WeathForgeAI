@@ -612,6 +612,31 @@ tr.tfoot td {
   }
 }
 
+/* ---------- net-worth history card ---------- */
+.hist-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
+}
+.hist-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.chart-tip {
+  position: absolute; pointer-events: none; opacity: 0;
+  background: var(--surface-3); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 7px 11px;
+  box-shadow: var(--shadow); transition: opacity 0.12s;
+  min-width: 110px; z-index: 5;
+}
+.chart-tip .tip-date { font-size: 10.5px; color: var(--text-faint); }
+.chart-tip .tip-val { font-size: 13.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* boot skeleton */
+.skeleton-block {
+  border-radius: var(--radius);
+  background: linear-gradient(100deg, var(--surface) 40%, var(--surface-2) 50%, var(--surface) 60%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+@keyframes shimmer { to { background-position: -200% 0; } }
+
 /* ---------- auth pages ---------- */
 body.auth-page .sidebar, body.auth-page .bottom-nav { display: none; }
 body.auth-page .main { margin-left: 0; }

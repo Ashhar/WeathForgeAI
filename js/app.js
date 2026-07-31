@@ -242,7 +242,9 @@ const UI = (() => {
 
     switch (page) {
       case 'dashboard':
+        Store.recordSnapshot(); // one honest snapshot per day, deduped
         view().innerHTML = Views.dashboard();
+        Views.wireDashboard();
         break;
       case 'holdings': {
         view().innerHTML = Views.holdings(parts[1] || 'equity', highlightId);
@@ -327,7 +329,12 @@ const UI = (() => {
     route();
   }
 
-  return { boot, toast, confirmDelete, confirmDeleteLiability, resetDemo, setTheme, route };
+  function setHistRange(key) {
+    try { localStorage.setItem('wf.histRange', key); } catch (e) { /* ignore */ }
+    route();
+  }
+
+  return { boot, toast, confirmDelete, confirmDeleteLiability, resetDemo, setTheme, route, setHistRange };
 })();
 
 document.addEventListener('DOMContentLoaded', UI.boot);

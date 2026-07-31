@@ -23,6 +23,66 @@ const Views = (() => {
 
   const DISCLAIMER = `<div class="disclaimer">⚠️ <span>Projections are <b>illustrative, not financial advice</b>. Market-linked bands show a 10th–90th percentile range from historical return & volatility; contractual and assumed-rate curves compound deterministic rates.</span></div>`;
 
+  // ============ NET-WORTH HISTORY (Dashboard card) ============
+  const HIST_RANGES = { '3m': { label: '3M', days: 91 }, '6m': { label: '6M', days: 183 }, '1y': { label: '1Y', days: 365 }, all: { label: 'All', days: null } };
+  let histPoints = null; // stashed for post-render hover wiring
+
+  function histRange() {
+    try { const r = localStorage.getItem('wf.histRange'); if (HIST_RANGES[r]) return r; } catch (e) { /* ignore */ }
+    return '1y';
+  }
+
+  function historyCard() {
+    const rangeKey = histRange();
+    const snaps = Store.snapshotRange(HIST_RANGES[rangeKey].days);
+    const allCount = Store.snapshots().length;
+    histPoints = snaps.length >= 2 ? snaps.map(s => ({ date: s.date, value: s.netWorth })) : null;
+
+    let deltaHtml = '';
+    if (snaps.length >= 2) {
+      const first = snaps[0], last = snaps[snaps.length - 1];
+      const abs = last.netWorth - first.netWorth;
+      const pct = first.netWorth > 0 ? abs / first.netWorth : null;
+      const cls = abs > 0 ? 'pos' : abs < 0 ? 'neg' : 'flat';
+      deltaHtml = `<span class="delta ${cls}">${abs >= 0 ? '+' : '−'}${fmtINR(Math.abs(abs), { compact: true })}${pct != null ? ` · ${fmtPct(pct)}` : ''}</span>
+        <span class="dim small">over ${rangeKey === 'all' ? 'all time' : HIST_RANGES[rangeKey].label}</span>`;
+    }
+
+    let body;
+    if (allCount < 2) {
+      body = `<div class="empty" style="padding:34px 20px">
+        <div class="big" aria-hidden="true">📈</div>
+        <p><b>Add assets to start tracking your progress.</b></p>
+        <p class="small" style="margin-top:6px">Your net worth is snapshotted each time you open the dashboard — the trend appears once there are two days of history.</p>
+      </div>`;
+    } else if (snaps.length < 2) {
+      body = `<div class="empty" style="padding:34px 20px"><p class="small">Not enough history in this range yet — try a longer one.</p></div>`;
+    } else {
+      body = `<div class="chart-box" id="hist_chart">${Charts.area(histPoints, { gid: 'nw', ariaLabel: 'Net worth history, ' + HIST_RANGES[rangeKey].label })}</div>`;
+    }
+
+    return `
+      <div class="card" style="margin-top:18px">
+        <div class="hist-head">
+          <div class="card-title" style="margin-bottom:0">Net worth history</div>
+          <div class="hist-controls">
+            ${deltaHtml}
+            <div class="seg" role="group" aria-label="History range">
+              ${Object.entries(HIST_RANGES).map(([k, r]) =>
+                `<button class="${k === rangeKey ? 'on' : ''}" aria-pressed="${k === rangeKey}" onclick="UI.setHistRange('${k}')">${r.label}</button>`).join('')}
+            </div>
+          </div>
+        </div>
+        ${body}
+      </div>`;
+  }
+
+  // post-render wiring (hover layer) — called by the route handler
+  function wireDashboard() {
+    const box = document.getElementById('hist_chart');
+    if (box && histPoints) Charts.wireArea(box, histPoints);
+  }
+
   // ============ DASHBOARD ============
   function dashboard() {
     const p = Store.portfolio();
@@ -93,6 +153,8 @@ const Views = (() => {
           </div>
         </div>
       </div>
+
+      ${historyCard()}
 
       ${insights.length ? `
       <div class="card" style="margin-top:18px">
@@ -671,7 +733,7 @@ const Views = (() => {
     </div></div>`;
   }
 
-  return { dashboard, holdings, liabilitiesView, assetDetail, projections, settings, notFound };
+  return { dashboard, wireDashboard, holdings, liabilitiesView, assetDetail, projections, settings, notFound };
 })();
 
 if (typeof globalThis !== 'undefined') globalThis.Views = Views;
