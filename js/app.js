@@ -58,7 +58,15 @@ const UI = (() => {
     back.querySelector('[data-ok]').addEventListener('click', () => { back.remove(); onOk(); });
   }
 
+  // demo mode: block mutations with a clear explanation
+  function demoBlocked() {
+    if (!Store.isReadOnly()) return false;
+    toast('Demo data is read-only — sign up to track your own portfolio');
+    return true;
+  }
+
   function confirmDelete(id) {
+    if (demoBlocked()) return;
     const a = Store.get(id);
     if (!a) return;
     confirmModal({
@@ -75,6 +83,7 @@ const UI = (() => {
   }
 
   function confirmDeleteLiability(id) {
+    if (demoBlocked()) return;
     const l = Store.getLiability(id);
     if (!l) return;
     confirmModal({
@@ -148,6 +157,7 @@ const UI = (() => {
       Router.go(editId ? `/asset/${editId}` : `/holdings/${type}`);
     });
     document.getElementById('form_save').addEventListener('click', () => {
+      if (demoBlocked()) return;
       const res = Forms.collect(type);
       if (!res.ok) { toast('Please fix the highlighted fields'); return; }
       if (editId) {
@@ -184,6 +194,7 @@ const UI = (() => {
 
     document.getElementById('form_cancel').addEventListener('click', () => { Router.go('/liabilities'); });
     document.getElementById('form_save').addEventListener('click', () => {
+      if (demoBlocked()) return;
       const res = Forms.collectLiability();
       if (!res.ok) { toast('Please fix the highlighted fields'); return; }
       if (editId) {
@@ -200,9 +211,27 @@ const UI = (() => {
   }
 
   // ---------- route handling ----------
+  const AUTH_PAGES = ['login', 'signup', 'forgot', 'reset'];
+
   function route() {
     const parts = Router.path().replace(/^\//, '').split('/');
     const page = parts[0] || 'dashboard';
+    const isAuthPage = AUTH_PAGES.includes(page);
+
+    // auth guard: cloud mode gates data pages behind login and remembers
+    // the intended destination; auth pages bounce signed-in users home
+    if (Auth.enabled()) {
+      if (!Auth.session && !isAuthPage) {
+        Auth.setNext(Router.path());
+        Router.replace('/login');
+        return;
+      }
+      if (Auth.session && isAuthPage && page !== 'reset') {
+        Router.replace('/dashboard');
+        return;
+      }
+    }
+    document.body.classList.toggle('auth-page', isAuthPage);
 
     // nav active state (sidebar + mobile bottom bar)
     document.querySelectorAll('[data-route]').forEach(el => {
@@ -250,6 +279,21 @@ const UI = (() => {
       case 'edit-liability':
         liabilityForm(parts[1]);
         break;
+      case 'login':
+        Auth.renderLogin();
+        break;
+      case 'signup':
+        Auth.renderSignup();
+        break;
+      case 'forgot':
+        Auth.renderForgot();
+        break;
+      case 'reset':
+        Auth.renderReset();
+        break;
+      case 'account':
+        Auth.renderAccount();
+        break;
       default:
         view().innerHTML = Views.notFound();
     }
@@ -257,6 +301,7 @@ const UI = (() => {
   }
 
   function resetDemo() {
+    if (demoBlocked()) return;
     confirmModal({
       title: 'Reset to demo portfolio?',
       body: 'This replaces all your current holdings and liabilities with the sample demo portfolio. This cannot be undone.',
@@ -269,9 +314,15 @@ const UI = (() => {
     });
   }
 
-  function boot() {
+  async function boot() {
     initTheme();
-    Store.load();
+    if (Auth.enabled()) {
+      await Auth.init();
+      if (Auth.session) await Cloud.loadAll();
+    } else {
+      Store.load();
+    }
+    Auth.applyChrome();
     Router.init(route);
     route();
   }

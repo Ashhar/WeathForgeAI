@@ -45,7 +45,16 @@ const Store = (() => {
     otherloan:  { id: 'otherloan',  label: 'Other loan',       icon: '📋' },
   };
 
-  let state = { assets: [], liabilities: [] };
+  let state = { assets: [], liabilities: [], snapshots: [], goals: [] };
+  let readOnly = false;     // demo mode: all mutations are no-ops
+  let persistLocal = true;  // false when data lives in Supabase
+  let onMutate = null;      // cloud write-through hook: (collection, op, record) => {}
+
+  function emit(collection, op, record) {
+    if (onMutate) { try { onMutate(collection, op, record); } catch (e) { /* sync errors surface in Cloud */ } }
+  }
+  function setOnMutate(fn) { onMutate = fn; }
+  function isReadOnly() { return readOnly; }
 
   function load() {
     try {
@@ -54,70 +63,278 @@ const Store = (() => {
         state = JSON.parse(raw);
         state.assets = state.assets || [];
         state.liabilities = state.liabilities || [];
+        state.snapshots = state.snapshots || [];
+        state.goals = state.goals || [];
+        // pre-snapshot installs that still hold the untouched sample
+        // portfolio get its reconstructed history too
+        if (!state.snapshots.length && looksLikeSeed(state.assets)) {
+          state.snapshots = backfillSnapshots();
+          save();
+        }
         return;
       }
     } catch (e) { /* corrupted → reseed */ }
     state = seed();
+    state.snapshots = backfillSnapshots();
     save();
   }
   function save() {
+    if (!persistLocal) return;
     try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* storage unavailable */ }
   }
 
-  function uid() { return 'a' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36); }
+  // Replace local state with cloud data (Supabase mode).
+  function setRemote(data, opts = {}) {
+    state = {
+      assets: data.assets || [],
+      liabilities: data.liabilities || [],
+      snapshots: data.snapshots || [],
+      goals: data.goals || [],
+    };
+    readOnly = !!opts.readOnly;
+    persistLocal = false;
+  }
+  function setLocalMode() {
+    readOnly = false;
+    persistLocal = true;
+    load();
+  }
+
+  function uid() {
+    // uuids so records can be upserted straight into Postgres
+    try { if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID(); } catch (e) { /* fall through */ }
+    return 'a' + Math.random().toString(36).slice(2, 9) + Date.now().toString(36);
+  }
 
   // ---------- asset CRUD ----------
   function all() { return state.assets; }
   function byType(type) { return state.assets.filter(a => a.type === type); }
   function get(id) { return state.assets.find(a => a.id === id) || null; }
   function add(asset) {
+    if (readOnly) return null;
     asset.id = asset.id || uid();
     asset.createdAt = asset.createdAt || new Date().toISOString();
     state.assets.push(asset);
     save();
+    emit('assets', 'upsert', asset);
     return asset;
   }
   function update(id, patch) {
+    if (readOnly) return null;
     const i = state.assets.findIndex(a => a.id === id);
     if (i < 0) return null;
     state.assets[i] = { ...state.assets[i], ...patch, id };
     save();
+    emit('assets', 'upsert', state.assets[i]);
     return state.assets[i];
   }
   function remove(id) {
+    if (readOnly) return;
     state.assets = state.assets.filter(a => a.id !== id);
     // unlink any liability pointing at it
-    state.liabilities.forEach(l => { if (l.linkedAssetId === id) delete l.linkedAssetId; });
+    state.liabilities.forEach(l => {
+      if (l.linkedAssetId === id) { delete l.linkedAssetId; emit('liabilities', 'upsert', l); }
+    });
     save();
+    emit('assets', 'delete', { id });
   }
 
   // ---------- liability CRUD ----------
   function liabilities() { return state.liabilities; }
   function getLiability(id) { return state.liabilities.find(l => l.id === id) || null; }
   function addLiability(l) {
+    if (readOnly) return null;
     l.id = l.id || uid();
     l.createdAt = l.createdAt || new Date().toISOString();
     state.liabilities.push(l);
     save();
+    emit('liabilities', 'upsert', l);
     return l;
   }
   function updateLiability(id, patch) {
+    if (readOnly) return null;
     const i = state.liabilities.findIndex(l => l.id === id);
     if (i < 0) return null;
     state.liabilities[i] = { ...state.liabilities[i], ...patch, id };
     save();
+    emit('liabilities', 'upsert', state.liabilities[i]);
     return state.liabilities[i];
   }
   function removeLiability(id) {
+    if (readOnly) return;
     state.liabilities = state.liabilities.filter(l => l.id !== id);
     save();
+    emit('liabilities', 'delete', { id });
   }
   function liabilityLinkedTo(assetId) {
     return state.liabilities.find(l => l.linkedAssetId === assetId) || null;
   }
   function resetDemo() {
+    if (readOnly) return;
     state = seed();
+    state.snapshots = backfillSnapshots();
     save();
+  }
+
+  // ---------- net-worth snapshots ----------
+  function snapshots() {
+    return state.snapshots.slice().sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  }
+  // Record today's snapshot from live valuations (deduped by date).
+  // Called when the dashboard opens; demo mode is read-only so the
+  // seeded history stays authoritative there.
+  function recordSnapshot() {
+    if (readOnly) return null;
+    const today = Fin.todayISO();
+    const p = portfolio();
+    if (!isFinite(p.netWorth)) return null;
+    const snap = {
+      date: today,
+      totalAssets: Math.round(p.totalAssets),
+      totalLiabilities: Math.round(p.totalLiabilities),
+      netWorth: Math.round(p.netWorth),
+      byType: Object.fromEntries(Object.entries(p.byType).map(([k, v]) => [k, Math.round(v)])),
+    };
+    const i = state.snapshots.findIndex(s => s.date === today);
+    if (i >= 0) {
+      const prev = state.snapshots[i];
+      if (prev.netWorth === snap.netWorth && !prev.synthetic) return prev; // nothing changed
+      state.snapshots[i] = snap;
+    } else {
+      state.snapshots.push(snap);
+    }
+    save();
+    emit('snapshots', 'upsert', snap);
+    return snap;
+  }
+  // snapshots within the last `days` (null → all), oldest first
+  function snapshotRange(days) {
+    const all2 = snapshots();
+    if (!days) return all2;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    const iso = cutoff.toISOString().slice(0, 10);
+    return all2.filter(s => s.date >= iso);
+  }
+  // recent trend from snapshot history: monthly growth (absolute ₹/month
+  // and %/month) over up to the trailing 6 months
+  function recentGrowth() {
+    const range = snapshotRange(183);
+    if (range.length < 2) return null;
+    const first = range[0], last = range[range.length - 1];
+    const months = Math.max(0.5, Fin.yearsBetween(first.date, last.date) * 12);
+    return {
+      perMonthAbs: (last.netWorth - first.netWorth) / months,
+      perMonthPct: first.netWorth > 0 ? Math.pow(last.netWorth / first.netWorth, 1 / months) - 1 : null,
+      from: first, to: last, months,
+    };
+  }
+  // Reconstructed weekly history for sample/demo portfolios so the
+  // chart looks alive from day one (deterministic, ends at today's
+  // real net worth). Real user accounts accumulate honest snapshots.
+  function backfillSnapshots(weeks = 52) {
+    const p = portfolio();
+    if (!isFinite(p.netWorth) || p.netWorth <= 0) return [];
+    const out = [];
+    const startFactor = 0.82;
+    for (let i = 0; i <= weeks; i++) {
+      const f = i / weeks;
+      const d = new Date();
+      d.setDate(d.getDate() - (weeks - i) * 7);
+      const wobble = 0.02 * Math.sin(i / 2.9) + 0.012 * Math.sin(i / 1.3 + 2);
+      const nw = Math.round(p.netWorth * (startFactor + (1 - startFactor) * f + wobble * (1 - f * 0.5)));
+      const liab = Math.round(p.totalLiabilities * (1.12 - 0.12 * f));
+      out.push({
+        date: d.toISOString().slice(0, 10),
+        totalAssets: nw + liab,
+        totalLiabilities: liab,
+        netWorth: nw,
+        synthetic: true,
+      });
+    }
+    // last point = today's real numbers
+    const today = out[out.length - 1];
+    today.totalAssets = Math.round(p.totalAssets);
+    today.totalLiabilities = Math.round(p.totalLiabilities);
+    today.netWorth = Math.round(p.netWorth);
+    return out;
+  }
+  function looksLikeSeed(assets) {
+    const labels = new Set((assets || []).map(a => a.label));
+    return labels.has('Flexi cap SIP') && labels.has('2BHK, Whitefield') && labels.has('Wedding jewellery');
+  }
+
+  // ---------- goals ----------
+  function goals() { return state.goals; }
+  function getGoal(id) { return state.goals.find(g => g.id === id) || null; }
+  function addGoal(g) {
+    if (readOnly) return null;
+    g.id = g.id || uid();
+    g.createdAt = g.createdAt || new Date().toISOString();
+    g.achieved = !!g.achieved;
+    state.goals.push(g);
+    save();
+    emit('goals', 'upsert', g);
+    return g;
+  }
+  function updateGoal(id, patch) {
+    if (readOnly) return null;
+    const i = state.goals.findIndex(g => g.id === id);
+    if (i < 0) return null;
+    state.goals[i] = { ...state.goals[i], ...patch, id };
+    save();
+    emit('goals', 'upsert', state.goals[i]);
+    return state.goals[i];
+  }
+  function removeGoal(id) {
+    if (readOnly) return;
+    state.goals = state.goals.filter(g => g.id !== id);
+    save();
+    emit('goals', 'delete', { id });
+  }
+  // Marks any goal whose target the current net worth has crossed as
+  // achieved (once), and returns the newly-achieved goals so the UI can
+  // celebrate exactly one time per goal.
+  function checkGoalAchievements() {
+    if (readOnly) return [];
+    const nw = portfolio().netWorth;
+    const newly = [];
+    for (const g of state.goals) {
+      if (!g.achieved && nw >= g.targetAmount) {
+        g.achieved = true;
+        g.achievedAt = new Date().toISOString();
+        newly.push(g);
+        emit('goals', 'upsert', g);
+      }
+    }
+    if (newly.length) save();
+    return newly;
+  }
+  // progress + pace for one goal against current net worth & trend
+  function goalProgress(g) {
+    const p = portfolio();
+    const nw = p.netWorth;
+    const pct = g.targetAmount > 0 ? Math.max(0, Math.min(1, nw / g.targetAmount)) : 0;
+    let projectedDate = null, monthsAway = null;
+    const growth = recentGrowth();
+    if (!g.achieved && growth && growth.perMonthAbs > 0 && nw < g.targetAmount) {
+      monthsAway = (g.targetAmount - nw) / growth.perMonthAbs;
+      if (monthsAway < 600) {
+        projectedDate = new Date();
+        projectedDate.setDate(projectedDate.getDate() + Math.round(monthsAway * 30.44));
+      } else {
+        monthsAway = null;
+      }
+    }
+    let status = 'ontrack';
+    if (g.achieved) status = 'achieved';
+    else if (g.targetDate) {
+      if (projectedDate) status = projectedDate <= new Date(g.targetDate) ? 'ontrack' : 'behind';
+      else status = new Date(g.targetDate) > new Date() ? 'ontrack' : 'behind';
+    } else if (!projectedDate) {
+      status = 'behind';
+    }
+    return { netWorth: nw, pct, projectedDate, monthsAway, status };
   }
 
   // ---------- liability valuation ----------
@@ -763,7 +980,14 @@ const Store = (() => {
         startDate: '2026-07-15', createdAt: new Date().toISOString(),
       },
     ];
-    return { assets, liabilities };
+    const achievedAt = new Date(); achievedAt.setMonth(achievedAt.getMonth() - 4);
+    const goals = [
+      { id: uid(), title: 'First ₹1.5 Cr net worth', targetAmount: 15000000, targetDate: null,
+        achieved: true, achievedAt: achievedAt.toISOString(), createdAt: new Date().toISOString() },
+      { id: uid(), title: '₹2.5 Cr by 2030', targetAmount: 25000000, targetDate: '2030-12-31',
+        achieved: false, achievedAt: null, createdAt: new Date().toISOString() },
+    ];
+    return { assets, liabilities, snapshots: [], goals };
   }
 
   return {
@@ -772,6 +996,9 @@ const Store = (() => {
     liabilities, getLiability, addLiability, updateLiability, removeLiability,
     liabilityValuation, liabilityCurve, liabilityLinkedTo,
     valuation, projectionBand, portfolio, portfolioBand,
+    snapshots, recordSnapshot, snapshotRange, recentGrowth,
+    goals, getGoal, addGoal, updateGoal, removeGoal, checkGoalAchievements, goalProgress,
+    setRemote, setLocalMode, setOnMutate, isReadOnly,
   };
 })();
 
