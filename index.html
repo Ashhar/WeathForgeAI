@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>WealthForge AI — Track, grow & project your net worth</title>
+  <meta name="description" content="WealthForge AI: add every asset you already own — equity, mutual funds, FDs, gold, real estate, crypto & more — and see current value, growth % and honest future projections."/>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚒️</text></svg>"/>
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">W</div>
+        <div>
+          <div class="brand-name">Wealth<span>Forge</span></div>
+          <div class="brand-sub">AI · Net worth</div>
+        </div>
+      </div>
+
+      <button class="nav-item" data-route="dashboard" onclick="location.hash='#/dashboard'">
+        <span class="ico">◧</span> Dashboard
+      </button>
+      <button class="nav-item" data-route="holdings" onclick="location.hash='#/holdings/equity'">
+        <span class="ico">☰</span> Holdings
+      </button>
+      <button class="nav-item" data-route="projections" onclick="location.hash='#/projections'">
+        <span class="ico">◔</span> Projections
+      </button>
+
+      <button class="sidebar-cta" onclick="location.hash='#/add'">＋ Add asset</button>
+
+      <div class="sidebar-foot">
+        <div style="margin-bottom:8px">Values: <span class="tag live" style="font-size:9px"><span class="dot"></span>Live</span> <span class="tag computed" style="font-size:9px"><span class="dot"></span>Computed</span> <span class="tag manual" style="font-size:9px"><span class="dot"></span>Manual</span></div>
+        <div>Projections are illustrative — not financial advice.</div>
+        <button class="btn sm ghost" style="margin-top:10px" onclick="UI.resetDemo()">Reset demo data</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div id="view"></div>
+    </main>
+  </div>
+
+  <script src="js/market.js"></script>
+  <script src="js/finance.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/forms.js"></script>
+  <script src="js/views.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

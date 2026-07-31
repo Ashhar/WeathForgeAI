@@ -1,0 +1,439 @@
+/* ============================================================
+   WealthForge AI — screens
+   Dashboard · Holdings (tabs per asset type) · Asset detail ·
+   Projections. Pure render functions returning HTML into #view.
+   ============================================================ */
+
+const Views = (() => {
+  const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const { fmtINR, fmtPct, fmtQty, fmtDate } = Fin;
+
+  const modeTag = m => `<span class="tag ${m}"><span class="dot"></span>${m === 'live' ? 'Live' : m === 'computed' ? 'Computed' : 'Manual'}</span>`;
+  const deltaChip = (p, opts = {}) => {
+    if (p == null || !isFinite(p)) return '<span class="delta flat">—</span>';
+    const cls = p > 0.0001 ? 'pos' : p < -0.0001 ? 'neg' : 'flat';
+    return `<span class="delta ${cls}">${fmtPct(p, opts.digits != null ? opts.digits : 1)}${opts.suffix || ''}</span>`;
+  };
+  const pctText = p => {
+    if (p == null || !isFinite(p)) return '<span class="dim">—</span>';
+    return `<span class="${p >= 0 ? 'pos-t' : 'neg-t'}">${fmtPct(p)}</span>`;
+  };
+
+  const DISCLAIMER = `<div class="disclaimer">⚠️ <span>Projections are <b>illustrative, not financial advice</b>. Market-linked bands show a 10th–90th percentile range from historical return & volatility; contractual and assumed-rate curves compound deterministic rates.</span></div>`;
+
+  // ============ DASHBOARD ============
+  function dashboard() {
+    const p = Store.portfolio();
+    const assets = Store.all();
+    const vals = assets.map(a => ({ a, v: Store.valuation(a) }));
+
+    // allocation slices
+    const slices = Store.TYPE_ORDER
+      .map(t => ({ label: Store.TYPES[t].label, value: p.byType[t] || 0, type: t }))
+      .filter(s => s.value > 0);
+
+    // top movers (live assets by |day change|)
+    const movers = vals.filter(x => x.v.dayChangePct != null)
+      .sort((x, y) => Math.abs(y.v.dayChangePct) - Math.abs(x.v.dayChangePct)).slice(0, 5);
+
+    // 10-year projection teaser
+    const band = Store.portfolioBand(10, 24);
+    const p50End = band.length ? band[band.length - 1] : null;
+
+    // per-class cards
+    const classCards = slices.map(s => {
+      const typeAssets = vals.filter(x => x.a.type === s.type);
+      const inv = typeAssets.reduce((sum, x) => sum + (x.v.investedShare || 0), 0);
+      const gain = inv > 0 ? (s.value - inv) / inv : null;
+      return `<div class="card" style="cursor:pointer" onclick="location.hash='#/holdings/${s.type}'">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div class="stat-label">${Store.TYPES[s.type].icon} ${esc(s.label)}</div>
+          ${modeTag(Store.TYPES[s.type].mode)}
+        </div>
+        <div class="stat-value" style="margin-top:8px">${fmtINR(s.value, { compact: true })}</div>
+        <div class="stat-sub">${typeAssets.length} holding${typeAssets.length > 1 ? 's' : ''} · ${gain != null ? `<span class="${gain >= 0 ? 'pos-t' : 'neg-t'}">${fmtPct(gain)}</span> overall` : '—'}</div>
+      </div>`;
+    }).join('');
+
+    return `
+      <div class="page-head">
+        <div>
+          <div class="page-title">Dashboard</div>
+          <div class="page-sub">Your whole net worth — live, computed and manual holdings in one place.</div>
+        </div>
+        <button class="btn primary" onclick="location.hash='#/add'">+ Add asset</button>
+      </div>
+
+      <div class="hero">
+        <div>
+          <div class="hero-label">Total net worth (your share, loans netted)</div>
+          <div class="hero-value">${fmtINR(p.total)}</div>
+          <div class="hero-meta">
+            ${deltaChip(p.absPct)} <span class="dim small">overall · ${fmtINR(p.absGain, { compact: true })} gain on ${fmtINR(p.invested, { compact: true })} invested</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:34px;align-items:center;flex-wrap:wrap">
+          <div class="stat">
+            <div class="stat-label">Today (live assets)</div>
+            <div class="stat-value ${p.dayChange >= 0 ? 'pos-t' : 'neg-t'}">${p.dayChange >= 0 ? '+' : '−'}${fmtINR(Math.abs(p.dayChange), { compact: true })}</div>
+            <div class="stat-sub">${p.dayChangePct != null ? fmtPct(p.dayChangePct, 2) : '—'} on market-linked value</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">In 10 years (median)</div>
+            <div class="stat-value">${p50End ? fmtINR(p50End.p50, { compact: true }) : '—'}</div>
+            <div class="stat-sub">${p50End ? `range ${fmtINR(p50End.p10, { compact: true })} – ${fmtINR(p50End.p90, { compact: true })}` : ''}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Holdings</div>
+            <div class="stat-value">${assets.length}</div>
+            <div class="stat-sub">across ${slices.length} asset classes</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid cols-2" style="margin-top:18px">
+        <div class="card">
+          <div class="card-title">Allocation</div>
+          <div style="display:flex;gap:22px;align-items:center;flex-wrap:wrap">
+            <div class="chart-box" style="flex:0 0 190px">${Charts.donut(slices, { centerLabel: fmtINR(p.total, { compact: true }), centerSub: 'net worth' })}</div>
+            <div style="flex:1;min-width:210px">
+              ${slices.map((s, i) => `<div class="alloc-row">
+                <span class="sw" style="background:${Charts.COLORS[i % Charts.COLORS.length]}"></span>
+                <span class="nm">${esc(s.label)}</span>
+                <span class="vl">${fmtINR(s.value, { compact: true })}</span>
+                <span class="pc">${((s.value / (p.total || 1)) * 100).toFixed(0)}%</span>
+              </div>`).join('')}
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">10-year outlook <span class="right"><a href="#/projections">Full projections →</a></span></div>
+          <div class="chart-box">${Charts.fan(band, { height: 210 })}</div>
+          <div class="legend">
+            <span class="key"><span class="sw" style="background:#e8b64c"></span>Median path</span>
+            <span class="key"><span class="sw" style="background:rgba(232,182,76,0.3)"></span>10th–90th percentile</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px">
+        <div class="card-title">Asset classes</div>
+        <div class="grid cols-4">${classCards}</div>
+      </div>
+
+      <div class="grid cols-2" style="margin-top:18px">
+        <div class="card">
+          <div class="card-title">Today's movers</div>
+          ${movers.length ? `<div class="tbl-wrap"><table class="tbl"><tbody>
+            ${movers.map(x => `<tr onclick="location.hash='#/asset/${x.a.id}'">
+              <td><div class="asset-name">${esc(x.a.label)}</div><div class="asset-sub">${esc(x.v.sub)}</div></td>
+              <td class="num">${fmtINR(x.v.currentValue, { compact: true })}</td>
+              <td class="num">${deltaChip(x.v.dayChangePct, { digits: 2 })}</td>
+            </tr>`).join('')}
+          </tbody></table></div>` : `<div class="empty">No live-priced holdings yet.</div>`}
+        </div>
+        <div class="card">
+          <div class="card-title">Best performers (annualized)</div>
+          <div class="tbl-wrap"><table class="tbl"><tbody>
+            ${vals.filter(x => x.v.annualized != null).sort((a, b) => b.v.annualized - a.v.annualized).slice(0, 5)
+              .map(x => `<tr onclick="location.hash='#/asset/${x.a.id}'">
+                <td><div class="asset-name">${esc(x.a.label)}</div><div class="asset-sub">${Store.TYPES[x.a.type].label} · ${x.v.annualizedMethod}</div></td>
+                <td class="num">${fmtINR(x.v.currentValue, { compact: true })}</td>
+                <td class="num">${pctText(x.v.annualized)}</td>
+              </tr>`).join('')}
+          </tbody></table></div>
+        </div>
+      </div>
+      <div style="margin-top:18px">${DISCLAIMER}</div>`;
+  }
+
+  // ============ HOLDINGS ============
+  const COLUMNS = {
+    equity: ['Holding', 'Qty', 'Avg cost', 'Invested', 'Current', 'Day', 'P&L', 'Annualized', 'Mode'],
+    mf: ['Holding', 'Units', 'Invested', 'Current', 'P&L', 'Annualized', 'Mode'],
+    fd: ['Holding', 'Principal', 'Rate', 'Booked', 'Maturity', 'Accrued value', 'Maturity value', 'Mode'],
+    gold: ['Holding', 'Form', 'Qty', 'Invested', 'Current', 'P&L', 'Annualized', 'Mode'],
+    realestate: ['Holding', 'Purchased', 'Est. value', 'Loan', 'Net equity', 'Growth p.a.', 'Mode'],
+    crypto: ['Holding', 'Qty', 'Invested', 'Current', 'P&L', 'Annualized', 'Mode'],
+    other: ['Holding', 'Sub-type', 'Cost', 'Current', 'Rate', 'P&L', 'Mode'],
+  };
+
+  function holdingRow(a, v, highlight) {
+    const d = a.data || {};
+    const name = `<td><div class="asset-name">${esc(a.label)}${a.ownership === 'joint' ? ` <span class="chip" title="Joint — your share counted">${a.sharePct}% share</span>` : ''}</div><div class="asset-sub">${esc(v.sub)}</div></td>`;
+    const mode = `<td>${modeTag(v.mode)}</td>`;
+    const pnl = `<td class="num"><div>${pctText(v.absPct)}</div><div class="asset-sub">${fmtINR(v.absGain, { compact: true })}</div></td>`;
+    const ann = `<td class="num"><div>${pctText(v.annualized)}</div><div class="asset-sub">${v.annualizedMethod}</div></td>`;
+    let cells = '';
+    switch (a.type) {
+      case 'equity':
+        cells = `${name}<td class="num">${fmtQty(d.quantity)}</td><td class="num">${fmtINR(d.avgPrice, { decimals: 1 })}</td><td class="num">${fmtINR(v.invested, { compact: true })}</td><td class="num"><b>${fmtINR(v.grossValue, { compact: true })}</b></td><td class="num">${deltaChip(v.dayChangePct, { digits: 2 })}</td>${pnl}${ann}${mode}`;
+        break;
+      case 'mf':
+        cells = `${name}<td class="num">${fmtQty(d.units, 2)}</td><td class="num">${fmtINR(v.invested, { compact: true })}</td><td class="num"><b>${fmtINR(v.grossValue, { compact: true })}</b></td>${pnl}${ann}${mode}`;
+        break;
+      case 'fd': {
+        const mat = Fin.fdMaturityDate(d.startDate, d.tenureYears);
+        cells = `${name}<td class="num">${fmtINR(d.principal, { compact: true })}</td><td class="num">${d.rate}%</td><td>${fmtDate(d.startDate)}</td><td>${fmtDate(mat)}</td><td class="num"><b>${fmtINR(v.grossValue, { compact: true })}</b></td><td class="num">${fmtINR(Fin.fdMaturityValue({ ...d, tenureYears: d.tenureYears, interestType: d.interestType || 'cumulative', compounding: d.compounding || 'quarterly' }), { compact: true })}</td>${mode}`;
+        break;
+      }
+      case 'gold': {
+        const qty = (d.form === 'etf' || d.form === 'sgb') ? `${fmtQty(d.units, 2)} u` : `${fmtQty(d.grams, 1)} g`;
+        cells = `${name}<td>${esc((d.form || '').toUpperCase())}</td><td class="num">${qty}</td><td class="num">${fmtINR(v.invested, { compact: true })}</td><td class="num"><b>${fmtINR(v.grossValue, { compact: true })}</b></td>${pnl}${ann}${mode}`;
+        break;
+      }
+      case 'realestate':
+        cells = `${name}<td>${fmtDate(a.acquiredOn)}</td><td class="num">${fmtINR(v.grossValue, { compact: true })}</td><td class="num">${d.loanBalance ? fmtINR(d.loanBalance, { compact: true }) : '—'}</td><td class="num"><b>${fmtINR(v.fullValue, { compact: true })}</b></td><td class="num">${pctText(v.annualized)}</td>${mode}`;
+        break;
+      case 'crypto':
+        cells = `${name}<td class="num">${fmtQty(d.quantity, 6)}</td><td class="num">${fmtINR(v.invested, { compact: true })}</td><td class="num"><b>${fmtINR(v.grossValue, { compact: true })}</b></td>${pnl}${ann}${mode}`;
+        break;
+      default:
+        cells = `${name}<td>${esc(d.subType || d.subPattern || '')}</td><td class="num">${fmtINR(d.costBasis, { compact: true })}</td><td class="num"><b>${fmtINR(v.grossValue, { compact: true })}</b></td><td class="num">${d.growthRate != null ? (d.growthRate > 0 ? '+' : '') + d.growthRate + '%' : '—'}</td>${pnl}${mode}`;
+    }
+    return `<tr onclick="location.hash='#/asset/${a.id}'" ${highlight === a.id ? 'class="row-highlight"' : ''}>${cells}</tr>`;
+  }
+
+  function holdings(tab, highlightId) {
+    tab = Store.TYPES[tab] ? tab : 'equity';
+    const assets = Store.byType(tab);
+    const t = Store.TYPES[tab];
+    let tabTotal = 0, tabInvested = 0;
+    const rows = assets.map(a => {
+      const v = Store.valuation(a);
+      tabTotal += v.currentValue; tabInvested += v.investedShare || 0;
+      return holdingRow(a, v, highlightId);
+    }).join('');
+
+    return `
+      <div class="page-head">
+        <div>
+          <div class="page-title">Holdings</div>
+          <div class="page-sub">Everything you own, by asset class. Click a row for detail, growth and its projection.</div>
+        </div>
+        <button class="btn primary" onclick="location.hash='#/add/${tab}'">+ Add ${t.label.replace(/s$/, '').toLowerCase()}</button>
+      </div>
+      <div class="tabs">
+        ${Store.TYPE_ORDER.map(k => `<button class="tab ${k === tab ? 'active' : ''}" onclick="location.hash='#/holdings/${k}'">${Store.TYPES[k].icon} ${Store.TYPES[k].label}<span class="count">${Store.byType(k).length}</span></button>`).join('')}
+      </div>
+      ${assets.length ? `
+        <div style="display:flex;gap:26px;margin-bottom:14px;flex-wrap:wrap">
+          <div class="stat"><div class="stat-label">${t.label} — current (your share)</div><div class="stat-value">${fmtINR(tabTotal)}</div></div>
+          <div class="stat"><div class="stat-label">Invested</div><div class="stat-value">${fmtINR(tabInvested)}</div></div>
+          <div class="stat"><div class="stat-label">Overall</div><div class="stat-value">${tabInvested > 0 ? pctText((tabTotal - tabInvested) / tabInvested) : '—'}</div></div>
+        </div>
+        <div class="card" style="padding:6px 4px"><div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr>${COLUMNS[tab].map((c, i) => `<th class="${i > 0 && !['Mode', 'Form', 'Booked', 'Maturity', 'Purchased', 'Sub-type'].includes(c) ? 'num' : ''}">${c}</th>`).join('')}</tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div></div>` : `
+        <div class="card"><div class="empty">
+          <div class="big">${t.icon}</div>
+          <p><b>No ${t.label.toLowerCase()} yet.</b></p>
+          <p class="small" style="margin:8px 0 16px">${esc(t.desc)}</p>
+          <button class="btn primary" onclick="location.hash='#/add/${tab}'">+ Add your first</button>
+        </div></div>`}`;
+  }
+
+  // ============ ASSET DETAIL ============
+  function assetDetail(id) {
+    const a = Store.get(id);
+    if (!a) return `<div class="card"><div class="empty">Asset not found. <a href="#/holdings/equity">Back to holdings</a></div></div>`;
+    const v = Store.valuation(a);
+    const d = a.data || {};
+    const t = Store.TYPES[a.type];
+
+    // ------- chart per valuation mode -------
+    let chartHtml = '', chartCaption = '';
+    if (v.mode === 'live') {
+      let key, price, sigma, mu, fxMul = 1;
+      if (a.type === 'equity') { const s = Market.getStock(d.symbol); key = d.symbol; price = s ? s.price : 0; sigma = v.sigma; mu = v.mu; fxMul = s && s.currency === 'USD' ? Market.FX.USDINR : 1; }
+      else if (a.type === 'mf') { key = d.schemeCode; price = Market.schemeNav(d.schemeCode, d.plan) || 0; sigma = v.sigma; mu = v.mu; }
+      else if (a.type === 'crypto') { const c = Market.getCoin(d.coinId); key = d.coinId; price = c ? c.priceUSD : 0; sigma = v.sigma; mu = v.mu; fxMul = Market.FX.USDINR; }
+      else { key = 'metal:' + (d.metal || 'gold'); price = d.form === 'etf' || d.form === 'sgb' ? (Market.getGoldUnit(d.instrumentId) || { price: d.lastUnitPrice || 0 }).price : (Market.metalRate(d.metal || 'gold') || {}).perGram * Market.purityFactor(d.purity || '24K'); sigma = v.sigma; mu = v.mu; }
+      const hist = Market.priceHistory(key, price * fxMul, 250, sigma, mu);
+      const yr = new Date().getFullYear();
+      chartHtml = Charts.line(hist, { xLabels: [`${yr - 1}`, '', `${yr}`], yFmt: Charts.compactINR });
+      chartCaption = 'Simulated 12-month price history (₹) — swap in a live feed for production.';
+    } else if (v.mode === 'computed') {
+      const yearsAhead = a.type === 'fd' ? Math.max(1, Math.ceil(d.tenureYears - v.years) + 1) : 5;
+      const band = Store.projectionBand(a, yearsAhead, 36);
+      chartHtml = Charts.fan(band, { color: '#b18cff' });
+      chartCaption = a.type === 'fd'
+        ? `Contractual compounding curve to maturity${(d.autoRenew && d.autoRenew !== 'none') ? ', then auto-renewed' : ''}. No Monte Carlo.`
+        : 'Contractual/deterministic growth curve. No Monte Carlo.';
+    } else {
+      const band = Store.projectionBand(a, 10, 36);
+      chartHtml = Charts.fan(band, { color: '#ffb75b' });
+      chartCaption = 'Deterministic curve at your assumed rate (band flexes the rate ±2pp). Value is your estimate.';
+    }
+
+    // ------- projection fan (10y, all modes) -------
+    const projBand = Store.projectionBand(a, 10, 36);
+    const projEnd = projBand ? projBand[projBand.length - 1] : null;
+
+    // ------- facts grid -------
+    const facts = [];
+    const add = (k, val2) => { if (val2 != null && val2 !== '' && val2 !== undefined) facts.push(`<div class="kv"><div class="k">${k}</div><div class="v">${val2}</div></div>`); };
+    add('Type', `${t.icon} ${t.label}`);
+    add('Acquired', fmtDate(a.acquiredOn));
+    add('Holding period', v.years < 1 ? `${Math.round(v.years * 12)} months` : `${v.years.toFixed(1)} years`);
+    add('Ownership', a.ownership === 'joint' ? `Joint — your share ${a.sharePct}%` : 'Single');
+    if (v.fx) add('FX', `Priced in ${v.fx.currency}, converted @ ₹${v.fx.rate}/$`);
+    if (a.type === 'equity') { add('Symbol', esc(d.symbol)); add('Quantity', fmtQty(d.quantity)); add('Avg buy price', fmtINR(d.avgPrice, { decimals: 1 })); if (d.dividends) add('Dividends received', fmtINR(d.dividends)); if (d.isin) add('ISIN', esc(d.isin)); }
+    if (a.type === 'mf') { const s = Market.getScheme(d.schemeCode); add('Scheme', esc(s ? s.name : d.schemeCode)); add('Plan / option', `${esc(d.plan)} · ${esc(d.option)}`); add('Units', fmtQty(d.units, 3)); add('Avg cost NAV', fmtINR(d.avgNav, { decimals: 1 })); if (d.sipOngoing) add('SIP', `${fmtINR(d.sipAmount)} / ${d.sipFreq || 'monthly'} (ongoing)`); if (d.folio) add('Folio', esc(d.folio)); }
+    if (a.type === 'fd') {
+      add('Bank / institution', esc(d.bank || '—') + (d.institutionType && d.institutionType !== 'bank' ? ` (${d.institutionType})` : ''));
+      add('Principal', fmtINR(d.principal)); add('Rate (locked)', `${d.rate}% p.a.`);
+      add('Compounding', esc(d.compounding)); add('Interest type', d.interestType === 'payout' ? 'Non-cumulative (payout)' : 'Cumulative');
+      add('Matures', fmtDate(Fin.fdMaturityDate(d.startDate, d.tenureYears)));
+      add('Maturity value', fmtINR(Fin.fdMaturityValue({ ...d, interestType: d.interestType || 'cumulative', compounding: d.compounding || 'quarterly' })));
+      if (d.interestType === 'payout') add('Payout / period', fmtINR(Fin.fdPayoutPerPeriod(d)));
+      if (d.autoRenew && d.autoRenew !== 'none') add('Auto-renew', d.autoRenew === 'principal' ? 'Principal only' : 'Principal + interest');
+      if (d.taxSaver) add('Tax-saver', '5-yr 80C lock-in');
+      if (d.fdNumber) add('FD number', esc(d.fdNumber));
+      add('Status', esc(d.status || 'active'));
+    }
+    if (a.type === 'gold') {
+      add('Form', esc((d.form || '').toUpperCase()));
+      if (d.grams) { add('Weight', `${fmtQty(d.grams, 2)} g`); add('Purity', esc(d.purity)); }
+      if (d.units) add('Units', fmtQty(d.units, 3));
+      if (d.makingCharges) add('Making charges', `${fmtINR(d.makingCharges)} (non-recoverable)`);
+      if (d.form === 'sgb') { add('SGB interest', `${d.sgbRate != null ? d.sgbRate : 2.5}% p.a. fixed`); if (d.sgbMaturity) add('SGB matures', fmtDate(d.sgbMaturity)); }
+    }
+    if (a.type === 'realestate') {
+      add('Property', `${esc(d.propertyType)}${d.locality ? ' · ' + esc(d.locality) : ''}${d.city ? ', ' + esc(d.city) : ''}`);
+      add('Purchase price', fmtINR(d.purchasePrice));
+      if (d.acquisitionCosts) add('Acquisition costs', fmtINR(d.acquisitionCosts));
+      if (d.sqft) add('Size', `${fmtQty(d.sqft, 0)} sq ft${d.ratePerSqft ? ` @ ${fmtINR(d.ratePerSqft)}/sq ft` : ''}`);
+      if (d.loanBalance) { add('Outstanding loan', fmtINR(d.loanBalance)); add('Net equity (counted)', fmtINR(v.fullValue)); }
+      if (d.loanEmi) add('EMI', `${fmtINR(d.loanEmi)}/mo${d.loanRate ? ` @ ${d.loanRate}%` : ''}`);
+      if (d.rentPerMonth) add('Rent', `${fmtINR(d.rentPerMonth)}/mo`);
+      add('Assumed appreciation', `${d.appreciationRate}% p.a.`);
+      add('Last revalued', fmtDate(d.lastRevaluedOn));
+    }
+    if (a.type === 'crypto') { add('Coin', esc(d.coinId)); add('Quantity', fmtQty(d.quantity, 8)); add('Avg buy price', `${d.investCurrency === 'USD' ? '$' : '₹'}${fmtQty(d.avgPrice, 2)}`); if (d.wallet) add('Wallet', esc(d.wallet)); if (d.stakingYield) add('Staking', `${d.stakingYield}% p.a.`); }
+    if (a.type === 'other') { add('Sub-type', esc(d.subType || d.subPattern)); add('Cost basis', fmtINR(d.costBasis)); add('Assumed rate', `${d.growthRate > 0 ? '+' : ''}${d.growthRate}% p.a.`); if (d.lastRevaluedOn) add('Last revalued', fmtDate(d.lastRevaluedOn)); }
+    if (d.lots && d.lots.length) add('Transaction lots', `${d.lots.length} buys (XIRR-based return)`);
+    if (a.tags && a.tags.length) add('Tags', a.tags.map(x => `<span class="chip">${esc(x)}</span>`).join(' '));
+
+    const manualPanel = v.mode === 'manual' ? `
+      <div class="card">
+        <div class="card-title">Manual valuation</div>
+        <p class="dim small" style="margin-bottom:12px">This asset has no market feed — its current value is your estimate${d.lastRevaluedOn ? `, last revalued <b>${fmtDate(d.lastRevaluedOn)}</b>` : ''}. Keep it fresh.</p>
+        <button class="btn" onclick="location.hash='#/edit/${a.id}'">Update value</button>
+      </div>` : '';
+
+    return `
+      <button class="back-link" onclick="history.length > 1 ? history.back() : location.hash='#/holdings/${a.type}'">← Back</button>
+      <div class="page-head">
+        <div>
+          <div class="page-title">${esc(a.label)} ${modeTag(v.mode)}</div>
+          <div class="page-sub">${esc(v.sub)}</div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <button class="btn" onclick="location.hash='#/edit/${a.id}'">✎ Edit</button>
+          <button class="btn danger" onclick="UI.confirmDelete('${a.id}')">Delete</button>
+        </div>
+      </div>
+
+      <div class="grid cols-4">
+        <div class="card"><div class="stat-label">Current value ${a.ownership === 'joint' ? '(your share)' : ''}</div><div class="stat-value">${fmtINR(v.currentValue)}</div>
+          ${v.dayChangePct != null ? `<div class="stat-sub">today ${deltaChip(v.dayChangePct, { digits: 2 })}</div>` : `<div class="stat-sub">${v.mode === 'computed' ? 'accrued as of today' : 'your estimate'}</div>`}</div>
+        <div class="card"><div class="stat-label">Invested (cost basis)</div><div class="stat-value">${fmtINR(v.invested)}</div><div class="stat-sub">acquired ${fmtDate(a.acquiredOn)}</div></div>
+        <div class="card"><div class="stat-label">Absolute return</div><div class="stat-value ${v.absGain >= 0 ? 'pos-t' : 'neg-t'}">${fmtINR(v.absGain, { compact: true })}</div><div class="stat-sub">${v.absPct != null ? fmtPct(v.absPct) : '—'} on invested</div></div>
+        <div class="card"><div class="stat-label">Annualized (${v.annualizedMethod})</div><div class="stat-value">${v.annualized != null ? `<span class="${v.annualized >= 0 ? 'pos-t' : 'neg-t'}">${fmtPct(v.annualized)}</span>` : '—'}</div><div class="stat-sub">${v.annualizedMethod === 'XIRR' ? 'true rate across your staggered buys' : v.annualizedMethod === 'CAGR' ? 'single lump-sum holding' : 'held under a year'}</div></div>
+      </div>
+
+      ${v.notes.length ? `<div class="card" style="margin-top:18px"><div class="card-title">Notes on this holding</div>${v.notes.map(n => `<div class="small dim" style="padding:4px 0">• ${n}</div>`).join('')}</div>` : ''}
+
+      <div class="grid cols-2" style="margin-top:18px">
+        <div class="card">
+          <div class="card-title">${v.mode === 'live' ? 'Price history' : v.mode === 'computed' ? 'Contractual curve' : 'Assumed-growth curve'}</div>
+          <div class="chart-box">${chartHtml}</div>
+          <div class="small faint" style="margin-top:8px">${chartCaption}</div>
+        </div>
+        <div class="card">
+          <div class="card-title">10-year projection ${v.mode === 'live' ? '(Monte Carlo band)' : '(deterministic)'}</div>
+          <div class="chart-box">${Charts.fan(projBand, { height: 240 })}</div>
+          ${projEnd ? `<div class="small dim" style="margin-top:8px">Median in 10y: <b>${fmtINR(projEnd.p50, { compact: true })}</b>${projEnd.p90 - projEnd.p10 > 1 ? ` · range ${fmtINR(projEnd.p10, { compact: true })} – ${fmtINR(projEnd.p90, { compact: true })}` : ''}</div>` : ''}
+        </div>
+      </div>
+
+      ${manualPanel ? `<div style="margin-top:18px">${manualPanel}</div>` : ''}
+
+      <div class="card" style="margin-top:18px">
+        <div class="card-title">Details</div>
+        <div class="kv-grid">${facts.join('')}</div>
+        ${a.notes ? `<div class="small dim" style="margin-top:14px">📝 ${esc(a.notes)}</div>` : ''}
+      </div>
+      <div style="margin-top:18px">${DISCLAIMER}</div>`;
+  }
+
+  // ============ PROJECTIONS ============
+  function projections(horizon) {
+    horizon = horizon || 10;
+    const band = Store.portfolioBand(horizon, 48);
+    const end = band.length ? band[band.length - 1] : null;
+    const p = Store.portfolio();
+
+    const rows = Store.all().map(a => {
+      const v = Store.valuation(a);
+      const b = Store.projectionBand(a, horizon, 12);
+      const e = b ? b[b.length - 1] : null;
+      return { a, v, e };
+    }).filter(x => x.e).sort((x, y) => y.e.p50 - x.e.p50);
+
+    return `
+      <div class="page-head">
+        <div>
+          <div class="page-title">Projections</div>
+          <div class="page-sub">Each asset is projected by its valuation mode — Monte Carlo bands for market-linked holdings (width scales with volatility), single deterministic curves for contractual and assumed-rate assets — then aggregated into your portfolio fan.</div>
+        </div>
+        <div class="proj-controls">
+          <span class="dim small">Horizon</span>
+          <div class="seg" id="horizon_seg">
+            ${[1, 3, 5, 10, 20].map(h => `<button class="${h === horizon ? 'on' : ''}" onclick="location.hash='#/projections/${h}'">${h}y</button>`).join('')}
+          </div>
+        </div>
+      </div>
+
+      ${DISCLAIMER}
+
+      <div class="card" style="margin-top:18px">
+        <div class="card-title">Whole portfolio — ${horizon}-year fan</div>
+        <div style="display:flex;gap:30px;flex-wrap:wrap;margin-bottom:12px">
+          <div class="stat"><div class="stat-label">Today</div><div class="stat-value">${fmtINR(p.total, { compact: true })}</div></div>
+          <div class="stat"><div class="stat-label">Median in ${horizon}y</div><div class="stat-value" style="color:var(--brand)">${end ? fmtINR(end.p50, { compact: true }) : '—'}</div>
+            <div class="stat-sub">${end && p.total > 0 ? fmtPct(Math.pow(end.p50 / p.total, 1 / horizon) - 1) + ' implied p.a.' : ''}</div></div>
+          <div class="stat"><div class="stat-label">Conservative (p10)</div><div class="stat-value">${end ? fmtINR(end.p10, { compact: true }) : '—'}</div></div>
+          <div class="stat"><div class="stat-label">Optimistic (p90)</div><div class="stat-value">${end ? fmtINR(end.p90, { compact: true }) : '—'}</div></div>
+        </div>
+        <div class="chart-box">${Charts.fan(band, { height: 300 })}</div>
+        <div class="legend">
+          <span class="key"><span class="sw" style="background:#e8b64c"></span>Median path</span>
+          <span class="key"><span class="sw" style="background:rgba(232,182,76,0.3)"></span>10th–90th percentile band</span>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px">
+        <div class="card-title">Per-asset projection at ${horizon} years</div>
+        <div class="tbl-wrap"><table class="tbl">
+          <thead><tr><th>Holding</th><th>Method</th><th class="num">Today</th><th class="num">Median +${horizon}y</th><th class="num">Range (p10–p90)</th></tr></thead>
+          <tbody>
+            ${rows.map(x => `<tr onclick="location.hash='#/asset/${x.a.id}'">
+              <td><div class="asset-name">${esc(x.a.label)}</div><div class="asset-sub">${Store.TYPES[x.a.type].label}</div></td>
+              <td>${modeTag(x.v.mode)} <span class="small faint">${x.v.mode === 'live' ? `σ ${(x.v.sigma * 100).toFixed(0)}%` : x.v.mode === 'computed' ? 'contractual' : 'assumed rate'}</span></td>
+              <td class="num">${fmtINR(x.v.currentValue, { compact: true })}</td>
+              <td class="num"><b>${fmtINR(x.e.p50, { compact: true })}</b></td>
+              <td class="num">${Math.abs(x.e.p90 - x.e.p10) < Math.max(1, x.e.p50 * 0.001) ? '<span class="dim">deterministic</span>' : `${fmtINR(x.e.p10, { compact: true })} – ${fmtINR(x.e.p90, { compact: true })}`}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table></div>
+        <div class="small faint" style="margin-top:10px">Debt & liquid funds get far narrower bands than equity; crypto bands are widest by design. FDs follow their locked contract; manual assets compound your assumed rate.</div>
+      </div>`;
+  }
+
+  return { dashboard, holdings, assetDetail, projections };
+})();
