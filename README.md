@@ -1,7 +1,8 @@
 # WealthForge AI
 
 Track, grow and project your whole net worth — every asset you *already own* in one place:
-equity, mutual funds, fixed deposits, gold & silver, real estate, crypto and everything else.
+equity, mutual funds, fixed deposits, EPF/PPF/NPS, small savings, ESOPs/RSUs, gold & silver,
+real estate, crypto — plus your loans, so net worth is honest: **assets − liabilities**.
 
 **Zero build step.** Vanilla HTML/CSS/JS single-page app. Open `index.html` (or serve the folder)
 and it runs, seeded with a demo portfolio persisted to `localStorage`.
@@ -15,12 +16,15 @@ python3 -m http.server 8000
 
 | Route | Screen |
 |---|---|
-| `#/dashboard` | Net worth hero, day change, allocation donut, 10-year outlook, asset-class cards, movers & best performers |
-| `#/holdings/:type` | Holdings tabs (Equity / Mutual Funds / FDs / Gold & Silver / Real Estate / Crypto / Others) with type-specific columns; new/edited rows highlight |
-| `#/asset/:id` | Asset detail — current value, invested, absolute + annualized return (XIRR/CAGR), mode-appropriate chart, 10-year projection, full facts, edit/delete |
-| `#/add` → `#/add/:type` | Add flow — step 1 type picker, then a dynamic type-driven form |
-| `#/edit/:id` | Same form, pre-filled (revalue a property, mark an FD matured, update after a fresh buy) |
-| `#/projections/:years?` | Whole-portfolio fan (1/3/5/10/20y horizons) + per-asset projection table |
+| `#/dashboard` | Net worth hero (assets − liabilities), rule-based insights with cited sources, allocation donut, 10-year net-worth outlook, asset-class cards, movers & best performers |
+| `#/holdings/:type` | 12 holdings tabs (Equity / MFs / ESOPs / Crypto / FDs / Small Savings / EPF / PPF / NPS / Gold / Real Estate / Others) with type-specific columns + footer totals |
+| `#/liabilities` | Loans & card balances — amortized outstanding, EMI split (P/I), payoff date, interest remaining, footer total |
+| `#/asset/:id` | Asset detail — value, growth (XIRR/CAGR/contract rate), mode-appropriate chart, vesting timeline for grants, statement-freshness panel, 10-year projection |
+| `#/add` → `#/add/:type` | Add flow — grouped type picker (Market-linked · Deposits & small savings · Retirement · Property & physical · Liabilities · Other), then a dynamic type-driven form |
+| `#/add-liability`, `#/edit-liability/:id` | Liability capture with live payoff/interest preview and asset linking (home loan ↔ property) |
+| `#/edit/:id` | Same form, pre-filled (revalue a property, update EPF from a statement, mark an FD matured) |
+| `#/projections/:years?/:mode?` | Whole-portfolio fan (1/3/5/10/20y), **net worth vs assets-only** toggle, per-asset table with the liability payoff row |
+| `#/settings` | Light/dark theme toggle + data-sources table (every feed with its Live/Computed/Manual tag) |
 
 ## The three outputs every asset produces (spec §C)
 
@@ -47,6 +51,21 @@ Every holding shows its mode tag in the UI. Debt/liquid funds get far narrower b
 - **Real estate** — purchase price/date, current estimate + last-revalued date, assumed appreciation, size × rate alternate estimate, **net equity (value − loan) × ownership share** into net worth, rent yield, acquisition costs into basis.
 - **Crypto** — coin search, 8-dp quantities, USD/INR purchase currency with FX note, DCA lots → XIRR, staking, stablecoin flag, extra-wide band + explicit caveat.
 - **Others** — appreciating / depreciating (negative rates) / fixed-income-like sub-patterns; manual or rate-based valuation.
+- **EPF/PF** — statement balance + monthly employee/employer/VPF contributions at the statutory rate; projects the corpus at your retirement age.
+- **PPF** — balance + annual contribution (₹1.5L cap validated inline), 15-year maturity auto-derived from open date, extension in 5-year blocks.
+- **NPS** — corpus + monthly contribution + E/C/G allocation (validated to 100) → blended μ/σ feeds the existing Monte Carlo engine; tagged Live with a market-linked note.
+- **Small savings** — RD (recurring monthly compounding), SSY (annual contributions, cap validated), KVP/NSC/PO TD (lump-sum compounding), PO MIS (payout scheme with monthly income).
+- **ESOPs/RSUs** — grant type (RSU/ISO/NSO), vesting schedule (cliff + monthly/quarterly/annual), vested vs unvested split, option intrinsic value (price − strike, floored at 0), vesting-timeline visual; listed tickers use the equity Monte Carlo band, private companies are tagged illiquid/assumption-based.
+
+## Liabilities
+
+Home / car / personal / education loans, credit cards and other loans live in a parallel
+collection. Each stores outstanding balance (as of a statement date), rate, EMI, lender and an
+optional link to an asset. The app amortizes the balance forward, computes the payoff date, the
+EMI principal/interest split and total interest remaining. A home loan linked to a property is
+counted once (under liabilities) while the property shows gross value + net equity — no
+double-counting. Projections subtract the deterministic payoff curve from the assets fan for the
+net-worth view. Liabilities get a neutral "owed" treatment, not the P&L loss palette.
 
 **Shared:** label/nickname, acquisition date, tags/notes, single/joint ownership with share % (net worth counts your share only), currency + FX note. **Quick path** (quantity + avg cost + date) is the default; identity/advanced fields sit behind "Add more details" expanders; lots support **CSV paste**; "Import statement" affordance is stubbed per type.
 
@@ -59,16 +78,32 @@ js/market.js      mock market service — stocks, MF NAVs, coins, metal rates, F
                   deterministic simulated price histories (swap for real APIs)
 js/finance.js     FD compounding, CAGR, XIRR (Newton + bisection), lognormal
                   Monte Carlo bands, deterministic/contractual curves, ₹ formatting
-js/store.js       asset model, per-type valuation dispatcher, projections,
-                  portfolio aggregation, localStorage persistence, demo seed
+js/store.js       asset + liability model, per-type valuation dispatcher,
+                  amortization, projections, net-worth aggregation, demo seed
+js/insights.js    rule-based insights over assets + liabilities (cited sources,
+                  informational-not-advice framing)
 js/charts.js      dependency-free SVG charts — fan, line, donut, sparkline
 js/forms.js       dynamic type-driven add/edit forms, validation, smart derivation
 js/views.js       Dashboard / Holdings / Asset detail / Projections renderers
-js/app.js         hash router, add-edit flow, modals, toasts, boot
+js/app.js         hash router, add/edit flows, grouped type picker,
+                  theme toggle, modals, toasts, boot
+tests/run-tests.js unit tests for all financial math (node tests/run-tests.js)
 ```
+
+## Tests
+
+```bash
+node tests/run-tests.js
+```
+
+51 assertions cover FD compounding, XIRR, EPF/PPF/RD/annuity math, NPS blended μ/σ, loan
+amortization (EMI, balance, payoff date, interest remaining, EMI split), RSU/option vesting and
+intrinsic value, small-savings maturity math, and net-worth-with-liabilities invariants
+(including the linked home-loan no-double-count rule).
 
 ## Notes
 
 - Prices/NAVs are a **deterministic simulation** so the app is fully self-contained; `js/market.js` is the single integration point for real feeds (AMFI NAVs, exchange LTPs, metal spot, crypto, FX).
 - Projections aggregate per-asset bands (p10/p50/p90 summed) into the portfolio fan.
-- "Reset demo data" in the sidebar restores the sample portfolio.
+- Light + dark themes (Settings → Appearance); charts re-tint from CSS tokens. Mobile gets a bottom tab bar.
+- "Reset demo data" (Settings → Data) restores the sample portfolio.

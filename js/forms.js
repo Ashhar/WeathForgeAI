@@ -765,7 +765,393 @@ const Forms = (() => {
         return { errors, acquiredOn: date, data, labelOverride: name };
       },
     },
+
+    // ---------------- EPF / PF ----------------
+    epf: {
+      title: 'EPF / Provident fund',
+      render(a) {
+        const d = a.data || {};
+        return `${importBand('EPF passbook / annual statement')}
+        <div class="form-grid">
+          ${numF('f_balance', 'Current balance (₹, from statement)', { req: true, value: d.balance })}
+          ${dateF('f_asof', 'Balance as of (statement date)', { req: true, value: d.asOfDate || Fin.todayISO() })}
+          ${numF('f_emp', 'Monthly employee contribution (₹)', { req: true, value: d.empContribution })}
+          ${numF('f_er', 'Monthly employer contribution (₹)', { req: true, value: d.erContribution })}
+          ${numF('f_rate', 'Statutory interest rate (% p.a.)', { req: true, value: d.rate != null ? d.rate : 8.25, step: '0.01', hint: 'EPFO-declared, credited yearly. Editable when it changes.' })}
+          ${dateF('f_date', 'Account start date', { req: true, value: a.acquiredOn })}
+          ${numF('f_curage', 'Your current age', { value: d.currentAge != null ? d.currentAge : 30, hint: 'Used with retirement age to project your corpus.' })}
+          ${numF('f_retage', 'Retirement age', { value: d.retirementAge != null ? d.retirementAge : 60 })}
+        </div>
+        <details class="expander"><summary>Add more details — UAN, VPF</summary><div class="expander-body">
+          <div class="form-grid">
+            ${txt('f_uan', 'UAN', { value: d.uan, placeholder: '1012 3456 7890' })}
+            ${numF('f_vpf', 'VPF top-up (₹/month)', { value: d.vpf, hint: 'Voluntary PF over the statutory 12%.' })}
+          </div>
+        </div></details>
+        ${sharedSection(a)}
+        <div class="disclaimer" style="margin-top:16px">⚠️ The retirement-corpus projection compounds today's statutory rate and contributions — <b>illustrative, not advice</b>. Update the balance when your annual statement arrives.</div>`;
+      },
+      wire() {
+        const preview = () => {
+          const b = num('f_balance'), r = num('f_rate'), emp = num('f_emp') || 0, er = num('f_er') || 0, vpf = num('f_vpf') || 0;
+          const yrs = Math.max(0, (num('f_retage') || 60) - (num('f_curage') || 30));
+          if (b != null && r != null) {
+            const corpus = Fin.contributoryFV(b, r / 100, yrs, emp + er + vpf);
+            setHint('f_balance', `Projected corpus at retirement (${yrs}y): ≈ ${Fin.fmtINR(corpus, { compact: true })}`);
+          }
+        };
+        ['f_balance', 'f_rate', 'f_emp', 'f_er', 'f_curage', 'f_retage'].forEach(id => $(id).addEventListener('input', preview));
+        preview();
+      },
+      collect() {
+        const errors = [];
+        const balance = num('f_balance');
+        if (balance == null) { setErr('f_balance', 'Statement balance is required'); errors.push('b'); } else setErr('f_balance', null);
+        const rate = num('f_rate');
+        if (rate == null) { setErr('f_rate', 'Interest rate is required'); errors.push('r'); } else setErr('f_rate', null);
+        const emp = num('f_emp'), er = num('f_er');
+        if (emp == null) { setErr('f_emp', 'Employee contribution is required (0 is fine)'); errors.push('e'); } else setErr('f_emp', null);
+        if (er == null) { setErr('f_er', 'Employer contribution is required (0 is fine)'); errors.push('e2'); } else setErr('f_er', null);
+        const date = val('f_date');
+        if (!date) { setErr('f_date', 'Start date is required'); errors.push('d'); } else setErr('f_date', null);
+        const asOf = val('f_asof');
+        if (!asOf) { setErr('f_asof', 'Statement date is required'); errors.push('a'); } else setErr('f_asof', null);
+        return { errors, acquiredOn: date, data: {
+          balance, asOfDate: asOf, empContribution: emp, erContribution: er,
+          rate, currentAge: num('f_curage') || 30, retirementAge: num('f_retage') || 60,
+          uan: val('f_uan') || undefined, vpf: num('f_vpf') || undefined,
+        } };
+      },
+    },
+
+    // ---------------- PPF ----------------
+    ppf: {
+      title: 'PPF',
+      render(a) {
+        const d = a.data || {};
+        return `${importBand('PPF passbook')}
+        <div class="form-grid">
+          ${numF('f_balance', 'Current balance (₹)', { req: true, value: d.balance })}
+          ${dateF('f_asof', 'Balance as of', { req: true, value: d.asOfDate || Fin.todayISO() })}
+          ${numF('f_annual', 'Annual contribution (₹, cap ₹1.5L)', { req: true, value: d.annualContribution, hint: 'Validated against the ₹1,50,000 yearly cap.' })}
+          ${numF('f_rate', 'Current rate (% p.a.)', { req: true, value: d.rate != null ? d.rate : 7.1, step: '0.01', hint: 'Government-set quarterly; annual compounding.' })}
+          ${dateF('f_open', 'Account open date', { req: true, value: d.openDate || a.acquiredOn, hint: 'Drives the 15-year maturity date (auto-derived).' })}
+          ${sel('f_ext', 'Extension after maturity', [[0, 'None'], [5, '+5 years'], [10, '+10 years'], [15, '+15 years']], { value: d.extensionYears || 0, hint: 'PPF extends in 5-year blocks.' })}
+        </div>
+        ${sharedSection(a)}
+        <div class="disclaimer" style="margin-top:16px">⚠️ Maturity projection compounds today's rate — the government revises it quarterly. Illustrative, not advice.</div>`;
+      },
+      wire() {
+        const derive = () => {
+          const open = val('f_open');
+          const ext = parseInt(val('f_ext'), 10) || 0;
+          if (open) {
+            const mat = Fin.addYears(open, 15 + ext);
+            setHint('f_open', `Matures ${Fin.fmtDate(mat)} (15y${ext ? ' + ' + ext + 'y extension' : ''})`);
+          }
+          const ann = num('f_annual');
+          if (ann != null && ann > 150000) setErr('f_annual', 'Above the ₹1.5L annual PPF cap');
+          else setErr('f_annual', null);
+        };
+        ['f_open', 'f_ext', 'f_annual'].forEach(id => $(id).addEventListener('input', derive));
+        derive();
+      },
+      collect() {
+        const errors = [];
+        const balance = num('f_balance');
+        if (balance == null) { setErr('f_balance', 'Balance is required'); errors.push('b'); } else setErr('f_balance', null);
+        const annual = num('f_annual');
+        if (annual == null) { setErr('f_annual', 'Annual contribution is required (0 is fine)'); errors.push('a'); }
+        else if (annual > 150000) { setErr('f_annual', 'Above the ₹1.5L annual PPF cap'); errors.push('cap'); }
+        else setErr('f_annual', null);
+        const rate = num('f_rate');
+        if (rate == null) { setErr('f_rate', 'Rate is required'); errors.push('r'); } else setErr('f_rate', null);
+        const open = val('f_open');
+        if (!open) { setErr('f_open', 'Open date is required'); errors.push('o'); } else setErr('f_open', null);
+        const asOf = val('f_asof');
+        if (!asOf) { setErr('f_asof', 'Statement date is required'); errors.push('s'); } else setErr('f_asof', null);
+        return { errors, acquiredOn: open, data: {
+          balance, asOfDate: asOf, annualContribution: annual, rate,
+          openDate: open, extensionYears: parseInt(val('f_ext'), 10) || 0,
+        } };
+      },
+    },
+
+    // ---------------- NPS ----------------
+    nps: {
+      title: 'NPS',
+      render(a) {
+        const d = a.data || {};
+        return `${importBand('NPS statement (CRA)')}
+        <div class="form-note" style="margin-bottom:16px">NPS is <b>market-linked</b>: your E/C/G split blends equity and debt behaviour, so this one gets a Monte Carlo projection band, not a contractual curve.</div>
+        <div class="form-grid">
+          ${numF('f_corpus', 'Current corpus (₹)', { req: true, value: d.corpus })}
+          ${dateF('f_asof', 'Corpus as of', { req: true, value: d.asOfDate || Fin.todayISO() })}
+          ${numF('f_monthly', 'Monthly contribution (₹)', { req: true, value: d.monthlyContribution })}
+          ${seg('f_tier', 'Tier', [['I', 'Tier I'], ['II', 'Tier II']], d.tier || 'I', { hint: 'Tier I is the locked retirement account.' })}
+          <div class="form-section-title">Asset allocation (must sum to 100)</div>
+          ${numF('f_alloce', 'E — Equity (%)', { req: true, value: d.allocE != null ? d.allocE : 50, min: 0 })}
+          ${numF('f_allocc', 'C — Corporate debt (%)', { req: true, value: d.allocC != null ? d.allocC : 30, min: 0 })}
+          ${numF('f_allocg', 'G — Government securities (%)', { req: true, value: d.allocG != null ? d.allocG : 20, min: 0 })}
+          ${dateF('f_date', 'Account start date', { req: true, value: a.acquiredOn })}
+        </div>
+        <details class="expander"><summary>Add more details</summary><div class="expander-body"><div class="form-grid">
+          ${numF('f_totalinv', 'Total invested so far (₹, optional)', { value: d.totalInvested, hint: 'Enables a growth % figure.' })}
+          ${txt('f_pran', 'PRAN', { value: d.pran, placeholder: '1100 2233 4455' })}
+        </div></div></details>
+        ${sharedSection(a)}`;
+      },
+      wire() {
+        const blendPrev = () => {
+          const e = num('f_alloce') || 0, c = num('f_allocc') || 0, g = num('f_allocg') || 0;
+          const sum = e + c + g;
+          if (sum !== 100) { setErr('f_alloce', `Allocation sums to ${sum} — must be 100`); }
+          else {
+            setErr('f_alloce', null);
+            const b = Fin.npsBlend(e, c, g);
+            setHint('f_alloce', `Blended: μ ${(b.mu * 100).toFixed(1)}% · σ ${(b.sigma * 100).toFixed(1)}% — drives the band width`);
+          }
+        };
+        ['f_alloce', 'f_allocc', 'f_allocg'].forEach(id => $(id).addEventListener('input', blendPrev));
+        blendPrev();
+      },
+      collect() {
+        const errors = [];
+        const corpus = num('f_corpus');
+        if (corpus == null) { setErr('f_corpus', 'Corpus is required'); errors.push('c'); } else setErr('f_corpus', null);
+        const monthly = num('f_monthly');
+        if (monthly == null) { setErr('f_monthly', 'Monthly contribution is required (0 is fine)'); errors.push('m'); } else setErr('f_monthly', null);
+        const e = num('f_alloce') || 0, c = num('f_allocc') || 0, g = num('f_allocg') || 0;
+        if (e + c + g !== 100) { setErr('f_alloce', `Allocation sums to ${e + c + g} — must be 100`); errors.push('alloc'); }
+        const date = val('f_date');
+        if (!date) { setErr('f_date', 'Start date is required'); errors.push('d'); } else setErr('f_date', null);
+        const asOf = val('f_asof');
+        if (!asOf) { setErr('f_asof', 'Statement date is required'); errors.push('a'); } else setErr('f_asof', null);
+        return { errors, acquiredOn: date, data: {
+          corpus, asOfDate: asOf, monthlyContribution: monthly, tier: segVal('f_tier') || 'I',
+          allocE: e, allocC: c, allocG: g,
+          totalInvested: num('f_totalinv') != null ? num('f_totalinv') : undefined,
+          pran: val('f_pran') || undefined,
+        } };
+      },
+    },
+
+    // ---------------- SMALL SAVINGS ----------------
+    smallsavings: {
+      title: 'Small savings',
+      render(a) {
+        const d = a.data || {};
+        return `${importBand('post-office passbook / certificate')}
+        <div class="form-grid">
+          ${sel('f_subtype', 'Scheme', [['rd', 'Recurring deposit (RD)'], ['ssy', 'Sukanya Samriddhi (SSY)'], ['kvp', 'Kisan Vikas Patra (KVP)'], ['nsc', 'NSC'], ['pomis', 'Post Office MIS'], ['potd', 'Post Office TD']], { value: d.subType || 'rd', req: true, full: true })}
+          <div class="full" id="ss_dyn"></div>
+          ${numF('f_rate', 'Interest rate (% p.a., locked)', { req: true, value: d.rate, step: '0.01' })}
+          ${numF('f_tenure', 'Tenure (years)', { req: true, value: d.tenureYears, step: '0.5', hint: 'RD 5y · SSY 21y · KVP ~9.6y · NSC 5y · MIS 5y' })}
+          ${dateF('f_start', 'Start date', { req: true, value: d.startDate || a.acquiredOn })}
+        </div>
+        ${sharedSection(a)}`;
+      },
+      wire(a) {
+        const d = a.data || {};
+        const renderDyn = () => {
+          const st = val('f_subtype');
+          if (st === 'rd') {
+            $('ss_dyn').innerHTML = `<div class="form-grid">${numF('f_monthlyamt', 'Monthly deposit (₹)', { req: true, value: d.monthlyAmount })}</div>`;
+          } else if (st === 'ssy') {
+            $('ss_dyn').innerHTML = `<div class="form-grid">
+              ${numF('f_ssybal', 'Current balance (₹)', { value: d.balance })}
+              ${numF('f_ssyann', 'Annual contribution (₹, cap ₹1.5L)', { req: true, value: d.annualContribution })}
+            </div>`;
+            $('f_ssyann').addEventListener('input', () => {
+              const v2 = num('f_ssyann');
+              if (v2 != null && v2 > 150000) setErr('f_ssyann', 'Above the ₹1.5L annual SSY cap'); else setErr('f_ssyann', null);
+            });
+          } else {
+            $('ss_dyn').innerHTML = `<div class="form-grid">${numF('f_principal', 'Principal (₹)', { req: true, value: d.principal })}</div>`;
+          }
+          preview();
+        };
+        const preview = () => {
+          const st = val('f_subtype'), r = num('f_rate'), t = num('f_tenure');
+          if (r == null || !t) return;
+          let mv = null;
+          if (st === 'rd' && num('f_monthlyamt')) mv = Fin.annuityFV(num('f_monthlyamt'), r / 100, t, 12);
+          else if (st === 'ssy' && num('f_ssyann') != null) mv = Fin.ppfFV(num('f_ssybal') || 0, r / 100, t, num('f_ssyann'));
+          else if (num('f_principal')) mv = st === 'pomis' ? num('f_principal') : num('f_principal') * Math.pow(1 + r / 100, t);
+          if (mv != null) setHint('f_rate', `Maturity value ≈ ${Fin.fmtINR(mv)}${st === 'pomis' ? ` + ${Fin.fmtINR(num('f_principal') * r / 1200)}/mo income` : ''}`);
+        };
+        $('f_subtype').addEventListener('change', renderDyn);
+        ['f_rate', 'f_tenure'].forEach(id => $(id).addEventListener('input', preview));
+        renderDyn();
+      },
+      collect() {
+        const errors = [];
+        const st = val('f_subtype');
+        const rate = num('f_rate');
+        if (rate == null) { setErr('f_rate', 'Rate is required'); errors.push('r'); } else setErr('f_rate', null);
+        const tenure = num('f_tenure');
+        if (!tenure) { setErr('f_tenure', 'Tenure is required'); errors.push('t'); } else setErr('f_tenure', null);
+        const start = val('f_start');
+        if (!start) { setErr('f_start', 'Start date is required'); errors.push('s'); } else setErr('f_start', null);
+        const data = { subType: st, rate, tenureYears: tenure, startDate: start };
+        if (st === 'rd') {
+          data.monthlyAmount = num('f_monthlyamt');
+          if (!data.monthlyAmount) { setErr('f_monthlyamt', 'Monthly deposit is required'); errors.push('m'); }
+        } else if (st === 'ssy') {
+          data.balance = num('f_ssybal') || 0;
+          data.annualContribution = num('f_ssyann');
+          data.asOfDate = start;
+          if (data.annualContribution == null) { setErr('f_ssyann', 'Annual contribution is required'); errors.push('a'); }
+          else if (data.annualContribution > 150000) { setErr('f_ssyann', 'Above the ₹1.5L annual SSY cap'); errors.push('cap'); }
+        } else {
+          data.principal = num('f_principal');
+          if (!data.principal) { setErr('f_principal', 'Principal is required'); errors.push('p'); }
+        }
+        return { errors, acquiredOn: start, data };
+      },
+    },
+
+    // ---------------- ESOP / RSU ----------------
+    esop: {
+      title: 'ESOPs / RSUs',
+      render(a) {
+        const d = a.data || {};
+        return `${importBand('grant letter / equity portal')}
+        <div class="form-grid">
+          ${txt('f_company', 'Company', { req: true, value: d.company, placeholder: 'Microsoft, Flipkart…' })}
+          ${acF('f_ticker', 'Listed ticker (if public)', { value: d.ticker || '', key: d.ticker || '', placeholder: 'Search MSFT, AAPL… (leave blank if private)', hint: d.ticker ? 'Live price linked ✓' : 'Blank = private company → enter a share price below.' })}
+          ${seg('f_granttype', 'Grant type', [['RSU', 'RSU'], ['ISO', 'ISO'], ['NSO', 'NSO']], d.grantType || 'RSU', { req: true })}
+          ${numF('f_units', 'Total units granted', { req: true, value: d.totalUnits })}
+          <div class="form-section-title">Vesting schedule</div>
+          ${dateF('f_veststart', 'Vest start date', { req: true, value: d.vestStart || a.acquiredOn })}
+          ${numF('f_cliff', 'Cliff (months)', { req: true, value: d.cliffMonths != null ? d.cliffMonths : 12 })}
+          ${seg('f_freq', 'Vesting frequency after cliff', [['monthly', 'Monthly'], ['quarterly', 'Quarterly'], ['annual', 'Annual']], d.freq || 'quarterly', {})}
+          ${numF('f_duration', 'Total vesting period (months)', { req: true, value: d.durationMonths != null ? d.durationMonths : 48 })}
+          <div class="form-section-title">Pricing</div>
+          ${numF('f_strike', 'Strike price (options only)', { value: d.strike, hint: 'Leave blank for RSUs.' })}
+          ${numF('f_shareprice', 'Current share price (private / unlisted)', { value: d.sharePrice, hint: 'Use the 409A / last-round valuation. Ignored when a ticker is linked.' })}
+          ${seg('f_ccy', 'Currency', [['USD', 'USD'], ['INR', 'INR']], d.currency || 'USD', { hint: `USD converts at ₹${Market.FX.USDINR}/$.` })}
+          ${check('f_private', 'Private / unlisted company', d.isPrivate, 'Valued manually; tagged illiquid & assumption-based.')}
+          ${numF('f_growth', 'Assumed growth if private (% p.a.)', { value: d.assumedGrowth != null ? d.assumedGrowth : 15, step: '0.5' })}
+        </div>
+        <details class="expander"><summary>Add more details — exit assumptions</summary><div class="expander-body"><div class="form-grid">
+          ${txt('f_exitnote', 'Expected exit / IPO assumption', { value: d.exitNote, full: true, placeholder: 'e.g. IPO expected 2028; double-trigger RSUs settle then' })}
+        </div></div></details>
+        ${sharedSection(a)}
+        <div class="disclaimer" style="margin-top:16px">⚠️ Unvested units are excluded from net worth. RSU values are pre-tax; private-company values rest on your assumptions — illustrative, not advice.</div>`;
+      },
+      wire() {
+        wireAc('f_ticker', Market.searchStocks,
+          s => `<div><div class="ac-name">${s.symbol}</div><div class="ac-sub">${s.name} · ${s.exchange}</div></div><div class="ac-price">${s.currency === 'USD' ? '$' : '₹'}${s.price.toLocaleString('en-IN')}</div>`,
+          (s, inp) => {
+            inp.value = s.symbol; inp.dataset.key = s.symbol;
+            setHint('f_ticker', `${s.name} · ${s.currency === 'USD' ? '$' : '₹'}${s.price.toLocaleString('en-IN')} live`);
+          });
+        const preview = () => {
+          const start = val('f_veststart'), units = num('f_units'), cliff = num('f_cliff'), dur = num('f_duration');
+          if (start && units && dur) {
+            const vested = Fin.vestedUnits({ startDate: start, totalUnits: units, cliffMonths: cliff || 0, freq: segVal('f_freq') || 'quarterly', durationMonths: dur });
+            setHint('f_units', `Vested today: ${Fin.fmtQty(vested, 0)} of ${Fin.fmtQty(units, 0)} (${((vested / units) * 100).toFixed(0)}%)`);
+          }
+        };
+        ['f_veststart', 'f_units', 'f_cliff', 'f_duration'].forEach(id => $(id).addEventListener('input', preview));
+        preview();
+      },
+      collect() {
+        const errors = [];
+        const company = val('f_company');
+        if (!company) { setErr('f_company', 'Company is required'); errors.push('c'); } else setErr('f_company', null);
+        const units = num('f_units');
+        if (!units || units <= 0) { setErr('f_units', 'Total granted units are required'); errors.push('u'); } else setErr('f_units', null);
+        const vestStart = val('f_veststart');
+        if (!vestStart) { setErr('f_veststart', 'Vest start date is required'); errors.push('v'); } else setErr('f_veststart', null);
+        const duration = num('f_duration');
+        if (!duration || duration <= 0) { setErr('f_duration', 'Vesting period is required'); errors.push('dur'); } else setErr('f_duration', null);
+        const ticker = $('f_ticker').dataset.key || (val('f_ticker') ? val('f_ticker').toUpperCase() : '');
+        const isPrivate = checked('f_private');
+        const sharePrice = num('f_shareprice');
+        const grantType = segVal('f_granttype') || 'RSU';
+        const strike = num('f_strike');
+        if (!ticker && sharePrice == null) { setErr('f_shareprice', 'Enter a share price, or link a listed ticker'); errors.push('p'); } else setErr('f_shareprice', null);
+        if ((grantType === 'ISO' || grantType === 'NSO') && strike == null) { setErr('f_strike', 'Options need a strike price'); errors.push('st'); } else setErr('f_strike', null);
+        return { errors, acquiredOn: vestStart, labelOverride: val('f_label') || `${company} ${grantType}`, data: {
+          company, ticker: (ticker && Market.getStock(ticker)) ? ticker : undefined,
+          grantType, totalUnits: units, vestStart,
+          cliffMonths: num('f_cliff') || 0, freq: segVal('f_freq') || 'quarterly', durationMonths: duration,
+          strike: strike != null ? strike : undefined,
+          sharePrice: sharePrice != null ? sharePrice : undefined,
+          currency: segVal('f_ccy') || 'USD',
+          isPrivate: isPrivate || undefined,
+          assumedGrowth: num('f_growth') != null ? num('f_growth') : undefined,
+          exitNote: val('f_exitnote') || undefined,
+        } };
+      },
+    },
   };
+
+  // ============================================================
+  // Liability form (separate collection — not an asset type)
+  // ============================================================
+  function renderLiability(container, liab) {
+    const l = liab || {};
+    const reAssets = Store.byType('realestate');
+    container.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <span style="font-size:22px">💳</span>
+        <h2 style="font-size:18px">${liab ? 'Edit' : 'Add'} — Liability</h2>
+        <span class="tag computed"><span class="dot"></span>Amortized</span>
+      </div>
+      <p class="dim small" style="margin-bottom:18px">Loans amortize down deterministically from the outstanding balance, EMI and rate. Net worth = assets − liabilities.</p>
+      <div class="form-grid">
+        ${sel('fl_type', 'Liability type', Object.values(Store.LIABILITY_TYPES).map(t => [t.id, `${t.icon} ${t.label}`]), { value: l.type || 'homeloan', req: true })}
+        ${txt('fl_label', 'Label / nickname', { value: l.label, placeholder: 'HDFC home loan' })}
+        ${numF('fl_principal', 'Outstanding balance (₹)', { req: true, value: l.principal, hint: 'From your latest loan statement.' })}
+        ${dateF('fl_asof', 'Balance as of', { req: true, value: l.asOfDate || Fin.todayISO() })}
+        ${numF('fl_rate', 'Interest rate (% p.a.)', { req: true, value: l.rate, step: '0.01' })}
+        ${numF('fl_emi', 'EMI (₹/month)', { value: l.emi, hint: 'Leave blank for revolving credit-card balances.' })}
+        ${dateF('fl_start', 'Loan start date', { value: l.startDate })}
+        ${txt('fl_lender', 'Lender', { value: l.lender, placeholder: 'HDFC Bank' })}
+        ${reAssets.length ? sel('fl_linked', 'Link to a property (home loans)', [['', '— Not linked —'], ...reAssets.map(a2 => [a2.id, a2.label])], { value: l.linkedAssetId || '', full: true, hint: 'Linked loans are counted once, under Liabilities; the property then shows gross value + net equity (no double-count).' }) : ''}
+        ${txt('fl_notes', 'Notes', { value: l.notes, full: true })}
+      </div>`;
+    const preview = () => {
+      const p2 = num('fl_principal'), r = num('fl_rate'), emi = num('fl_emi');
+      if (p2 && r != null && emi) {
+        const months = Fin.loanPayoffMonths(p2, r / 100, emi);
+        if (months == null) { setErr('fl_emi', `EMI doesn't cover monthly interest (${Fin.fmtINR(p2 * r / 1200)}) — balance would grow`); return; }
+        setErr('fl_emi', null);
+        const d2 = new Date(); d2.setMonth(d2.getMonth() + months);
+        const interest = Fin.loanInterestRemaining(p2, r / 100, emi);
+        setHint('fl_emi', `Payoff ${Fin.fmtDate(d2)} (${(months / 12).toFixed(1)}y) · interest remaining ≈ ${Fin.fmtINR(interest, { compact: true })}`);
+      }
+    };
+    ['fl_principal', 'fl_rate', 'fl_emi'].forEach(id => $(id).addEventListener('input', preview));
+    preview();
+  }
+
+  function collectLiability() {
+    const errors = [];
+    const principal = num('fl_principal');
+    if (!principal || principal <= 0) { setErr('fl_principal', 'Outstanding balance is required'); errors.push('p'); } else setErr('fl_principal', null);
+    const rate = num('fl_rate');
+    if (rate == null) { setErr('fl_rate', 'Interest rate is required'); errors.push('r'); } else setErr('fl_rate', null);
+    const asOf = val('fl_asof');
+    if (!asOf) { setErr('fl_asof', 'Balance date is required'); errors.push('a'); } else setErr('fl_asof', null);
+    const type = val('fl_type');
+    const emi = num('fl_emi');
+    if (type !== 'creditcard' && !emi) { setErr('fl_emi', 'EMI is required for loans (credit cards may omit it)'); errors.push('e'); }
+    else if (emi && principal && rate != null && Fin.loanPayoffMonths(principal, rate / 100, emi) == null) { setErr('fl_emi', 'EMI is below the monthly interest — the loan never amortizes'); errors.push('e2'); }
+    else setErr('fl_emi', null);
+    if (errors.length) return { ok: false };
+    const linkedEl = document.getElementById('fl_linked');
+    return { ok: true, liability: {
+      type, label: val('fl_label') || Store.LIABILITY_TYPES[type].label,
+      principal, asOfDate: asOf, rate, emi: emi || null,
+      startDate: val('fl_start') || asOf, lender: val('fl_lender') || undefined,
+      linkedAssetId: linkedEl && linkedEl.value ? linkedEl.value : undefined,
+      notes: val('fl_notes') || undefined,
+    } };
+  }
 
   // ---------- public API ----------
   function render(container, type, asset) {
@@ -815,9 +1201,14 @@ const Forms = (() => {
       case 'gold': return d.form === 'sgb' ? (d.sgbIssue || 'SGB') : d.form === 'etf' ? (d.etfName || 'Gold ETF') : `${d.metal === 'silver' ? 'Silver' : 'Gold'} (${d.form})`;
       case 'realestate': return `${d.propertyType || 'Property'}${d.city ? ', ' + d.city : ''}`;
       case 'crypto': return d.coinId;
+      case 'epf': return 'EPF / PF';
+      case 'ppf': return 'PPF';
+      case 'nps': return `NPS Tier ${d.tier || 'I'}`;
+      case 'smallsavings': { const n = { rd: 'Recurring deposit', ssy: 'Sukanya Samriddhi', kvp: 'KVP', nsc: 'NSC', pomis: 'PO MIS', potd: 'PO TD' }; return n[d.subType] || 'Small savings'; }
+      case 'esop': return `${d.company || 'ESOP'} ${d.grantType || 'RSU'}`;
       default: return 'Asset';
     }
   }
 
-  return { render, collect };
+  return { render, collect, renderLiability, collectLiability };
 })();

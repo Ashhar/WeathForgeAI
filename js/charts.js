@@ -6,6 +6,21 @@
 const Charts = (() => {
   const COLORS = ['#e8b64c', '#5b9dff', '#2ecc8f', '#b18cff', '#f4586f', '#4fd1c5', '#ffb75b', '#8b96ab'];
 
+  // read chart tokens from the active theme at render time
+  function theme() {
+    try {
+      const cs = getComputedStyle(document.documentElement);
+      return {
+        grid: cs.getPropertyValue('--chart-grid').trim() || '#232d42',
+        label: cs.getPropertyValue('--chart-label').trim() || '#67718a',
+        text: cs.getPropertyValue('--text').trim() || '#e9edf6',
+        surface: cs.getPropertyValue('--surface').trim() || '#121826',
+      };
+    } catch (e) {
+      return { grid: '#232d42', label: '#67718a', text: '#e9edf6', surface: '#121826' };
+    }
+  }
+
   function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
 
   function niceTicks(min, max, n = 4) {
@@ -52,12 +67,13 @@ const Charts = (() => {
     for (let i = 0; i <= xtCount; i++) xt.push((tMax * i) / xtCount);
 
     const color = opts.color || '#e8b64c';
+    const th = theme();
     const isFlat = band.every(p => Math.abs(p.p90 - p.p10) < (vMax - vMin) * 0.002);
 
     return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
-      ${yt.map(v => `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" stroke="#232d42" stroke-width="1"/>
-        <text x="${padL - 8}" y="${y(v) + 4}" fill="#67718a" font-size="10.5" text-anchor="end">${compactINR(v)}</text>`).join('')}
-      ${xt.map(t => `<text x="${x(t)}" y="${H - 8}" fill="#67718a" font-size="10.5" text-anchor="middle">${t === 0 ? 'Now' : (tMax <= 2 ? (t * 12).toFixed(0) + 'mo' : '+' + t.toFixed(0) + 'y')}</text>`).join('')}
+      ${yt.map(v => `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" stroke="${th.grid}" stroke-width="1"/>
+        <text x="${padL - 8}" y="${y(v) + 4}" fill="${th.label}" font-size="10.5" text-anchor="end">${compactINR(v)}</text>`).join('')}
+      ${xt.map(t => `<text x="${x(t)}" y="${H - 8}" fill="${th.label}" font-size="10.5" text-anchor="middle">${t === 0 ? 'Now' : (tMax <= 2 ? (t * 12).toFixed(0) + 'mo' : '+' + t.toFixed(0) + 'y')}</text>`).join('')}
       ${isFlat ? '' : `<path d="${area}" fill="${color}" opacity="0.13"/>`}
       ${isFlat ? '' : `<path d="${line('p90')}" fill="none" stroke="${color}" stroke-width="1" opacity="0.45" stroke-dasharray="3 4"/>`}
       ${isFlat ? '' : `<path d="${line('p10')}" fill="none" stroke="${color}" stroke-width="1" opacity="0.45" stroke-dasharray="3 4"/>`}
@@ -81,6 +97,7 @@ const Charts = (() => {
     const areaD = `${d}L${x(values.length - 1)},${H - padB}L${x(0)},${H - padB}Z`;
     const up = values[values.length - 1] >= values[0];
     const color = opts.color || (up ? '#2ecc8f' : '#f4586f');
+    const th = theme();
     const yt = niceTicks(vMin, vMax, 4);
     const labels = opts.xLabels || [];
 
@@ -89,9 +106,9 @@ const Charts = (() => {
         <stop offset="0%" stop-color="${color}" stop-opacity="0.22"/>
         <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
       </linearGradient></defs>
-      ${yt.map(v => `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" stroke="#232d42" stroke-width="1"/>
-        <text x="${padL - 8}" y="${y(v) + 4}" fill="#67718a" font-size="10.5" text-anchor="end">${opts.yFmt ? opts.yFmt(v) : compactINR(v)}</text>`).join('')}
-      ${labels.map((l, i) => `<text x="${padL + (i / (labels.length - 1)) * (W - padL - padR)}" y="${H - 6}" fill="#67718a" font-size="10.5" text-anchor="middle">${esc(l)}</text>`).join('')}
+      ${yt.map(v => `<line x1="${padL}" x2="${W - padR}" y1="${y(v)}" y2="${y(v)}" stroke="${th.grid}" stroke-width="1"/>
+        <text x="${padL - 8}" y="${y(v) + 4}" fill="${th.label}" font-size="10.5" text-anchor="end">${opts.yFmt ? opts.yFmt(v) : compactINR(v)}</text>`).join('')}
+      ${labels.map((l, i) => `<text x="${padL + (i / (labels.length - 1)) * (W - padL - padR)}" y="${H - 6}" fill="${th.label}" font-size="10.5" text-anchor="middle">${esc(l)}</text>`).join('')}
       <path d="${areaD}" fill="url(#lg${opts.gid || 1})"/>
       <path d="${d}" fill="none" stroke="${color}" stroke-width="2"/>
       <circle cx="${x(values.length - 1)}" cy="${y(values[values.length - 1])}" r="3.5" fill="${color}"/>
@@ -113,11 +130,11 @@ const Charts = (() => {
         L${cx + rIn * Math.cos(a1)},${cy + rIn * Math.sin(a1)}
         A${rIn},${rIn} 0 ${large} 0 ${cx + rIn * Math.cos(a0)},${cy + rIn * Math.sin(a0)}Z`;
       a0 = a1;
-      return `<path d="${p}" fill="${COLORS[i % COLORS.length]}" stroke="#121826" stroke-width="1.5"/>`;
+      return `<path d="${p}" fill="${COLORS[i % COLORS.length]}" stroke="${theme().surface}" stroke-width="1.5"/>`;
     }).join('');
     const center = opts.centerLabel
-      ? `<text x="${cx}" y="${cy - 4}" text-anchor="middle" fill="#e9edf6" font-size="15" font-weight="700">${esc(opts.centerLabel)}</text>
-         <text x="${cx}" y="${cy + 13}" text-anchor="middle" fill="#67718a" font-size="10">${esc(opts.centerSub || '')}</text>`
+      ? `<text x="${cx}" y="${cy - 4}" text-anchor="middle" fill="${theme().text}" font-size="15" font-weight="700">${esc(opts.centerLabel)}</text>
+         <text x="${cx}" y="${cy + 13}" text-anchor="middle" fill="${theme().label}" font-size="10">${esc(opts.centerSub || '')}</text>`
       : '';
     return `<svg viewBox="0 0 ${size} ${size}" style="max-width:${size}px">${paths}${center}</svg>`;
   }
@@ -135,5 +152,5 @@ const Charts = (() => {
     return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}"><path d="${d}" fill="none" stroke="${color}" stroke-width="1.6"/></svg>`;
   }
 
-  return { fan, line, donut, spark, COLORS, compactINR };
+  return { fan, line, donut, spark, COLORS, compactINR, theme };
 })();

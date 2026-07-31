@@ -4,8 +4,12 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>WealthForge AI — Track, grow & project your net worth</title>
-  <meta name="description" content="WealthForge AI: add every asset you already own — equity, mutual funds, FDs, gold, real estate, crypto & more — and see current value, growth % and honest future projections."/>
+  <meta name="description" content="WealthForge AI: add every asset you already own — equity, mutual funds, FDs, EPF/PPF/NPS, ESOPs, gold, real estate, crypto — plus your loans, and see honest net worth, growth % and projections."/>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚒️</text></svg>"/>
+  <script>
+    // apply saved theme before first paint to avoid a flash
+    try { document.documentElement.dataset.theme = localStorage.getItem('wf.theme') || 'dark'; } catch (e) {}
+  </script>
   <link rel="stylesheet" href="styles.css"/>
 </head>
 <body>
@@ -25,27 +29,41 @@
       <button class="nav-item" data-route="holdings" onclick="location.hash='#/holdings/equity'">
         <span class="ico">☰</span> Holdings
       </button>
+      <button class="nav-item" data-route="liabilities" onclick="location.hash='#/liabilities'">
+        <span class="ico">▤</span> Liabilities
+      </button>
       <button class="nav-item" data-route="projections" onclick="location.hash='#/projections'">
         <span class="ico">◔</span> Projections
+      </button>
+      <button class="nav-item" data-route="settings" onclick="location.hash='#/settings'">
+        <span class="ico">⚙</span> Settings
       </button>
 
       <button class="sidebar-cta" onclick="location.hash='#/add'">＋ Add asset</button>
 
       <div class="sidebar-foot">
         <div style="margin-bottom:8px">Values: <span class="tag live" style="font-size:9px"><span class="dot"></span>Live</span> <span class="tag computed" style="font-size:9px"><span class="dot"></span>Computed</span> <span class="tag manual" style="font-size:9px"><span class="dot"></span>Manual</span></div>
-        <div>Projections are illustrative — not financial advice.</div>
-        <button class="btn sm ghost" style="margin-top:10px" onclick="UI.resetDemo()">Reset demo data</button>
+        <div>Net worth = assets − liabilities. Projections are illustrative — not financial advice.</div>
       </div>
     </aside>
 
     <main class="main">
       <div id="view"></div>
     </main>
+
+    <nav class="bottom-nav">
+      <button data-route="dashboard" onclick="location.hash='#/dashboard'"><span class="bn-ico">◧</span>Home</button>
+      <button data-route="holdings" onclick="location.hash='#/holdings/equity'"><span class="bn-ico">☰</span>Holdings</button>
+      <button class="bn-add" onclick="location.hash='#/add'"><span class="bn-ico">＋</span>Add</button>
+      <button data-route="liabilities" onclick="location.hash='#/liabilities'"><span class="bn-ico">▤</span>Loans</button>
+      <button data-route="projections" onclick="location.hash='#/projections'"><span class="bn-ico">◔</span>Project</button>
+    </nav>
   </div>
 
   <script src="js/market.js"></script>
   <script src="js/finance.js"></script>
   <script src="js/store.js"></script>
+  <script src="js/insights.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/forms.js"></script>
   <script src="js/views.js"></script>

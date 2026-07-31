@@ -139,6 +139,122 @@ const Fin = (() => {
     return (fd.principal * fd.rate / 100) / perYear;
   }
 
+  // ---------- contributory schemes (EPF / PPF / NPS / RD) ----------
+  // FV of a periodic contribution stream (end-of-period), annualRate as decimal
+  function annuityFV(payment, annualRate, years, periodsPerYear = 12) {
+    const n = Math.round(years * periodsPerYear);
+    if (n <= 0 || !payment) return 0;
+    const i = annualRate / periodsPerYear;
+    if (i === 0) return payment * n;
+    return payment * ((Math.pow(1 + i, n) - 1) / i);
+  }
+
+  // EPF-style: existing balance compounds + monthly contributions accrue
+  function contributoryFV(balance, annualRate, years, monthlyContribution) {
+    if (years <= 0) return balance;
+    return balance * Math.pow(1 + annualRate, years) + annuityFV(monthlyContribution, annualRate, years, 12);
+  }
+
+  // PPF-style: annual contribution at start of each year, annual compounding
+  function ppfFV(balance, annualRate, years, annualContribution) {
+    if (years <= 0) return balance;
+    let v = balance;
+    const full = Math.floor(years), frac = years - full;
+    for (let y = 0; y < full; y++) v = (v + annualContribution) * (1 + annualRate);
+    return v * Math.pow(1 + annualRate, frac);
+  }
+
+  // NPS blended mu/sigma from E/C/G split (percent weights summing to 100)
+  const NPS_CLASSES = { E: { mu: 0.12, sigma: 0.16 }, C: { mu: 0.075, sigma: 0.05 }, G: { mu: 0.07, sigma: 0.04 } };
+  function npsBlend(ePct, cPct, gPct) {
+    const w = { E: (ePct || 0) / 100, C: (cPct || 0) / 100, G: (gPct || 0) / 100 };
+    return {
+      mu: w.E * NPS_CLASSES.E.mu + w.C * NPS_CLASSES.C.mu + w.G * NPS_CLASSES.G.mu,
+      sigma: w.E * NPS_CLASSES.E.sigma + w.C * NPS_CLASSES.C.sigma + w.G * NPS_CLASSES.G.sigma,
+    };
+  }
+
+  // ---------- loan amortization ----------
+  function loanEmi(principal, annualRate, months) {
+    const m = annualRate / 12;
+    if (months <= 0) return principal;
+    if (m === 0) return principal / months;
+    const f = Math.pow(1 + m, months);
+    return principal * m * f / (f - 1);
+  }
+  function loanBalanceAfter(principal, annualRate, emi, monthsElapsed) {
+    if (monthsElapsed <= 0) return principal;
+    const m = annualRate / 12;
+    if (m === 0) return Math.max(0, principal - emi * monthsElapsed);
+    const f = Math.pow(1 + m, monthsElapsed);
+    return Math.max(0, principal * f - emi * (f - 1) / m);
+  }
+  // months to clear `principal` at `emi`; null if EMI doesn't cover interest
+  function loanPayoffMonths(principal, annualRate, emi) {
+    if (principal <= 0) return 0;
+    const m = annualRate / 12;
+    if (m === 0) return Math.ceil(principal / emi);
+    if (emi <= principal * m) return null;
+    return Math.ceil(Math.log(emi / (emi - principal * m)) / Math.log(1 + m));
+  }
+  function loanInterestRemaining(principal, annualRate, emi) {
+    const n = loanPayoffMonths(principal, annualRate, emi);
+    if (n == null) return null;
+    const m = annualRate / 12;
+    let bal = principal, interest = 0;
+    for (let k = 0; k < n && bal > 0.01; k++) {
+      const int = bal * m;
+      interest += int;
+      bal -= Math.min(emi - int, bal);
+    }
+    return interest;
+  }
+  function emiSplit(balance, annualRate, emi) {
+    const interest = balance * annualRate / 12;
+    return { interest, principal: Math.max(0, emi - interest) };
+  }
+
+  // ---------- ESOP / RSU vesting ----------
+  // sch: {startDate, totalUnits, cliffMonths, freq: 'monthly'|'quarterly'|'annual', durationMonths}
+  function monthsBetween(from, to) {
+    return Math.max(0, Math.floor((new Date(to) - new Date(from)) / (30.44 * 24 * 3600 * 1000)));
+  }
+  function vestedUnits(sch, asOf = new Date()) {
+    const elapsed = monthsBetween(sch.startDate, asOf);
+    const total = sch.durationMonths || 48;
+    const cliff = sch.cliffMonths || 0;
+    if (elapsed < cliff) return 0;
+    if (elapsed >= total) return sch.totalUnits;
+    const step = sch.freq === 'annual' ? 12 : sch.freq === 'quarterly' ? 3 : 1;
+    const stepsDone = Math.floor((elapsed - cliff) / step);
+    const vestedMonths = Math.min(total, cliff + stepsDone * step);
+    return sch.totalUnits * (vestedMonths / total);
+  }
+  function vestEvents(sch) {
+    const total = sch.durationMonths || 48;
+    const cliff = sch.cliffMonths || 0;
+    const step = sch.freq === 'annual' ? 12 : sch.freq === 'quarterly' ? 3 : 1;
+    const start = new Date(sch.startDate);
+    const events = [];
+    let prevFrac = 0;
+    for (let mth = cliff; mth <= total; mth += (mth === cliff ? step : step)) {
+      const m = Math.min(mth, total);
+      const frac = m / total;
+      const d = new Date(start);
+      d.setMonth(d.getMonth() + m);
+      events.push({ date: d, units: sch.totalUnits * (frac - prevFrac), cumFrac: frac, done: d <= new Date() });
+      prevFrac = frac;
+      if (m === total) break;
+    }
+    // ensure final vest lands exactly at duration end
+    if (events.length && events[events.length - 1].cumFrac < 1) {
+      const d = new Date(start);
+      d.setMonth(d.getMonth() + total);
+      events.push({ date: d, units: sch.totalUnits * (1 - prevFrac), cumFrac: 1, done: d <= new Date() });
+    }
+    return events;
+  }
+
   // ---------- projections ----------
   // Lognormal (GBM) percentile band: analytic Monte Carlo envelope.
   // Returns [{t, p10, p50, p90}] with t in years from now.
@@ -229,6 +345,9 @@ const Fin = (() => {
     fmtINR, fmtPct, fmtQty, fmtDate,
     cagr, xirr,
     fdValue, fdCurrentValue, fdMaturityValue, fdMaturityDate, fdTenureYears, fdPayoutPerPeriod,
+    annuityFV, contributoryFV, ppfFV, npsBlend, NPS_CLASSES,
+    loanEmi, loanBalanceAfter, loanPayoffMonths, loanInterestRemaining, emiSplit,
+    monthsBetween, vestedUnits, vestEvents,
     lognormalBand, deterministicBand, fdBand, addSipToBand, sumBands,
   };
 })();
