@@ -612,6 +612,37 @@ tr.tfoot td {
   }
 }
 
+/* ---------- goals ---------- */
+.goal { padding: 14px 4px; }
+.goal + .goal { border-top: 1px solid var(--border-soft); }
+.goal-compact { padding: 10px 4px; }
+.goal-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 9px; }
+.goal-title { font-weight: 700; font-size: 13.5px; margin-right: 8px; }
+.goal-actions { display: flex; gap: 8px; }
+.goal-bar {
+  height: 10px; border-radius: 6px; overflow: hidden;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.goal-fill {
+  height: 100%; border-radius: 6px 0 0 6px;
+  background: linear-gradient(90deg, #d99b25, #f4c766);
+  transition: width 0.4s ease;
+}
+.goal-fill.done { background: linear-gradient(90deg, #2ecc8f, #57e0a9); }
+.goal-meta {
+  display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  margin-top: 7px; font-size: 12px; color: var(--text-dim);
+}
+.pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.4px;
+  padding: 2.5px 9px; border-radius: 20px; text-transform: uppercase;
+  vertical-align: 2px;
+}
+.pill.achieved { color: var(--brand); background: rgba(232, 182, 76, 0.16); }
+.pill.ontrack { color: var(--pos); background: var(--pos-bg); }
+.pill.behind { color: var(--manual); background: var(--manual-bg); }
+
 /* ---------- net-worth history card ---------- */
 .hist-head {
   display: flex; align-items: center; justify-content: space-between;

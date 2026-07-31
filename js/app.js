@@ -98,6 +98,98 @@ const UI = (() => {
     });
   }
 
+  // ---------- goals ----------
+  function goalModal(editId) {
+    if (demoBlocked()) return;
+    const g = editId ? Store.getGoal(editId) : null;
+    if (editId && !g) return;
+    const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    const back = document.createElement('div');
+    back.className = 'modal-backdrop';
+    back.innerHTML = `<div class="modal" role="dialog" aria-label="${g ? 'Edit goal' : 'New goal'}">
+      <h3>${g ? 'Edit goal' : 'New goal'}</h3>
+      <div class="field" style="margin-bottom:12px">
+        <label for="g_title">Goal title <span class="req">*</span></label>
+        <input type="text" id="g_title" value="${esc(g ? g.title : '')}" placeholder="e.g. ₹1 Cr net worth"/>
+        <div class="err" id="g_title_err" role="alert"></div>
+      </div>
+      <div class="field" style="margin-bottom:12px">
+        <label for="g_amount">Target net worth (₹) <span class="req">*</span></label>
+        <input type="number" id="g_amount" min="1" value="${g ? g.targetAmount : ''}" placeholder="10000000"/>
+        <div class="err" id="g_amount_err" role="alert"></div>
+      </div>
+      <div class="field" style="margin-bottom:16px">
+        <label for="g_date">Target date (optional)</label>
+        <input type="date" id="g_date" value="${g && g.targetDate ? g.targetDate : ''}"/>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" data-cancel>Cancel</button>
+        <button class="btn primary" data-ok>${g ? 'Save goal' : 'Create goal'}</button>
+      </div>
+    </div>`;
+    document.body.appendChild(back);
+    back.addEventListener('click', e => { if (e.target === back) back.remove(); });
+    back.querySelector('[data-cancel]').addEventListener('click', () => back.remove());
+    back.querySelector('#g_title').focus();
+    back.querySelector('[data-ok]').addEventListener('click', () => {
+      const title = back.querySelector('#g_title').value.trim();
+      const amount = parseFloat(back.querySelector('#g_amount').value);
+      const date = back.querySelector('#g_date').value || null;
+      const tErr = back.querySelector('#g_title_err'), aErr = back.querySelector('#g_amount_err');
+      tErr.textContent = title ? '' : 'Give the goal a name';
+      aErr.textContent = amount > 0 ? '' : 'Enter a target amount above zero';
+      if (!title || !(amount > 0)) return;
+      if (g) {
+        // lowering the target below current net worth re-checks achievement
+        Store.updateGoal(g.id, { title, targetAmount: amount, targetDate: date });
+        toast('Goal updated');
+      } else {
+        Store.addGoal({ title, targetAmount: amount, targetDate: date });
+        toast('Goal created');
+      }
+      back.remove();
+      celebrateNewAchievements();
+      route();
+    });
+  }
+
+  function confirmDeleteGoal(id) {
+    if (demoBlocked()) return;
+    const g = Store.getGoal(id);
+    if (!g) return;
+    confirmModal({
+      title: `Delete goal “${(g.title || '').replace(/</g, '&lt;')}”?`,
+      body: 'This removes the goal and its progress tracking. Your holdings are untouched.',
+      okLabel: 'Delete goal',
+      onOk: () => { Store.removeGoal(id); toast('Goal deleted'); route(); },
+    });
+  }
+
+  // one-time celebration when net worth crosses a goal target
+  function celebrateNewAchievements() {
+    const newly = Store.checkGoalAchievements();
+    for (const g of newly) {
+      toast(`🎉 Goal achieved: ${g.title} — you crossed ${Fin.fmtINR(g.targetAmount, { compact: true })}!`);
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        try {
+          new Notification('🎉 WealthForge — goal achieved!', {
+            body: `${g.title}: your net worth crossed ${Fin.fmtINR(g.targetAmount, { compact: true })}.`,
+          });
+        } catch (e) { /* notification blocked */ }
+      }
+    }
+    return newly.length;
+  }
+
+  function wireGoalsPage() {
+    const btn = document.getElementById('goal_notif');
+    if (btn) btn.addEventListener('click', async () => {
+      const res = await Notification.requestPermission();
+      toast(res === 'granted' ? 'Browser alerts enabled' : 'Alerts stay off — you can re-enable in site settings');
+      route();
+    });
+  }
+
   // ---------- add / edit: grouped type picker ----------
   function typePicker() {
     const modeLabel = m => m === 'live' ? 'Live-priced' : m === 'computed' ? 'Computed' : 'Manual';
@@ -243,8 +335,14 @@ const UI = (() => {
     switch (page) {
       case 'dashboard':
         Store.recordSnapshot(); // one honest snapshot per day, deduped
+        if (celebrateNewAchievements()) { /* achieved pill renders below */ }
         view().innerHTML = Views.dashboard();
         Views.wireDashboard();
+        break;
+      case 'goals':
+        celebrateNewAchievements();
+        view().innerHTML = Views.goalsView();
+        wireGoalsPage();
         break;
       case 'holdings': {
         view().innerHTML = Views.holdings(parts[1] || 'equity', highlightId);
@@ -334,7 +432,10 @@ const UI = (() => {
     route();
   }
 
-  return { boot, toast, confirmDelete, confirmDeleteLiability, resetDemo, setTheme, route, setHistRange };
+  return {
+    boot, toast, confirmDelete, confirmDeleteLiability, resetDemo, setTheme, route, setHistRange,
+    goalModal, confirmDeleteGoal,
+  };
 })();
 
 document.addEventListener('DOMContentLoaded', UI.boot);

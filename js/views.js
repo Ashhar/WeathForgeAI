@@ -208,6 +208,8 @@ const Views = (() => {
         <div class="grid cols-4">${classCards}</div>
       </div>
 
+      ${goalsCard()}
+
       <div class="grid cols-2" style="margin-top:18px">
         <div class="card">
           <div class="card-title">Today's movers</div>
@@ -723,6 +725,93 @@ const Views = (() => {
       </div>`;
   }
 
+  // ============ GOALS ============
+  const GOAL_STATUS = {
+    achieved: { label: 'Achieved', cls: 'achieved', icon: '🏆' },
+    ontrack: { label: 'On track', cls: 'ontrack', icon: '📈' },
+    behind: { label: 'Behind', cls: 'behind', icon: '🐢' },
+  };
+
+  function goalRow(g, compact) {
+    const pr = Store.goalProgress(g);
+    const st = GOAL_STATUS[pr.status];
+    const pctTxt = (pr.pct * 100).toFixed(0);
+    let paceTxt = '';
+    if (g.achieved) {
+      paceTxt = `Achieved ${g.achievedAt ? fmtDate(g.achievedAt) : ''} 🎉`;
+    } else if (pr.projectedDate) {
+      paceTxt = `Projected: <b>${fmtDate(pr.projectedDate)}</b>`;
+      if (g.targetDate) {
+        const diffMo = Math.round((new Date(g.targetDate) - pr.projectedDate) / (30.44 * 24 * 3600 * 1000));
+        if (diffMo > 0) paceTxt += ` <span class="pos-t">(~${diffMo} mo early)</span>`;
+        else if (diffMo < 0) paceTxt += ` <span class="neg-t">(~${-diffMo} mo late)</span>`;
+      }
+    } else {
+      paceTxt = 'Need more history (or growth) to project a date';
+    }
+    return `<div class="goal ${compact ? 'goal-compact' : ''}">
+      <div class="goal-top">
+        <div>
+          <span class="goal-title">${esc(g.title)}</span>
+          <span class="pill ${st.cls}"><span aria-hidden="true">${st.icon}</span> ${st.label}</span>
+        </div>
+        ${compact ? '' : `<div class="goal-actions">
+          <button class="btn sm" onclick="UI.goalModal('${g.id}')" aria-label="Edit goal ${esc(g.title)}">✎ Edit</button>
+          <button class="btn sm danger" onclick="UI.confirmDeleteGoal('${g.id}')" aria-label="Delete goal ${esc(g.title)}">Delete</button>
+        </div>`}
+      </div>
+      <div class="goal-bar" role="progressbar" aria-valuenow="${pctTxt}" aria-valuemin="0" aria-valuemax="100" aria-label="${esc(g.title)}: ${pctTxt}% of ${fmtINR(g.targetAmount, { compact: true })}">
+        <div class="goal-fill ${g.achieved ? 'done' : ''}" style="width:${Math.min(100, pr.pct * 100).toFixed(1)}%"></div>
+      </div>
+      <div class="goal-meta">
+        <span>${fmtINR(pr.netWorth, { compact: true })} of <b>${fmtINR(g.targetAmount, { compact: true })}</b> · ${pctTxt}%</span>
+        <span>${g.targetDate ? `Target: ${fmtDate(g.targetDate)} · ` : ''}${paceTxt}</span>
+      </div>
+    </div>`;
+  }
+
+  function goalsView() {
+    const gs = Store.goals();
+    const notifBtn = (typeof Notification !== 'undefined' && Notification.permission === 'default')
+      ? '<button class="btn" id="goal_notif">🔔 Enable browser alerts</button>' : '';
+    return `
+      <div class="page-head">
+        <div>
+          <div class="page-title">Goals</div>
+          <div class="page-sub">Net-worth milestones with live progress and a projected achievement date from your recent growth rate.</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          ${notifBtn}
+          <button class="btn primary" onclick="UI.goalModal()">+ New goal</button>
+        </div>
+      </div>
+      ${gs.length ? `<div class="card">${gs.map(g => goalRow(g, false)).join('')}</div>` : `
+      <div class="card"><div class="empty">
+        <div class="big" aria-hidden="true">🎯</div>
+        <p><b>No goals yet.</b></p>
+        <p class="small" style="margin:8px 0 16px">Set a target net worth — the app tracks progress and projects when you'll get there.</p>
+        <button class="btn primary" onclick="UI.goalModal()">+ Create your first goal</button>
+      </div></div>`}
+      <div class="small faint" style="margin-top:14px">Projected dates extrapolate your last ~6 months of snapshots — illustrative, not financial advice.</div>`;
+  }
+
+  // compact dashboard module
+  function goalsCard() {
+    const gs = Store.goals();
+    if (!gs.length) {
+      return `<div class="card" style="margin-top:18px">
+        <div class="card-title">Goals <span class="right"><a href="/goals">Manage →</a></span></div>
+        <div class="small dim">Set a net-worth target and track progress toward it. <a href="/goals">Create a goal →</a></div>
+      </div>`;
+    }
+    const active = gs.filter(g => !g.achieved);
+    const shown = (active.length ? active : gs).slice(0, 2);
+    return `<div class="card" style="margin-top:18px">
+      <div class="card-title">Goals <span class="right"><a href="/goals">All goals (${gs.length}) →</a></span></div>
+      ${shown.map(g => goalRow(g, true)).join('')}
+    </div>`;
+  }
+
   // ============ 404 ============
   function notFound() {
     return `<div class="card"><div class="empty">
@@ -733,7 +822,7 @@ const Views = (() => {
     </div></div>`;
   }
 
-  return { dashboard, wireDashboard, holdings, liabilitiesView, assetDetail, projections, settings, notFound };
+  return { dashboard, wireDashboard, holdings, liabilitiesView, assetDetail, projections, settings, goalsView, notFound };
 })();
 
 if (typeof globalThis !== 'undefined') globalThis.Views = Views;
