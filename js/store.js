@@ -656,8 +656,36 @@ const Store = (() => {
     return finish(a, { v, grossValue: v, invested, dayChangePct, sub, notes, fx, mu, sigma, mode, share, years, extra });
   }
 
+  // C3: per-asset valuation-mode override (set from the detail-page
+  // toggle, persisted on the asset). 'live' is only ever the natural
+  // mode; 'manual' freezes the value at the user's estimate; 'computed'
+  // compounds the cost basis at an assumed rate.
+  function applyModeOverride(a, x, d) {
+    const o = a.valuationMode;
+    if (!o || o === x.mode) return;
+    if (o === 'manual' && d.manualValue != null) {
+      x.v = d.manualValue;
+      x.grossValue = d.manualValue;
+      x.mode = 'manual';
+      x.sigma = 0;
+      x.dayChangePct = null;
+      x.notes = [`Valuation switched to Manual — using your estimate of ${Fin.fmtINR(d.manualValue)}${d.manualValueDate ? ` (as of ${Fin.fmtDate(d.manualValueDate)})` : ''}. Switch back to ${TYPES[a.type].mode} any time.`, ...x.notes];
+    } else if (o === 'computed') {
+      const rate = d.assumedRate != null ? d.assumedRate : 8;
+      const base = (x.invested != null && x.invested > 0) ? x.invested : x.v;
+      const v2 = base * Math.pow(1 + rate / 100, x.years);
+      x.v = v2;
+      x.grossValue = v2;
+      x.mode = 'computed';
+      x.sigma = 0;
+      x.dayChangePct = null;
+      x.notes = [`Valuation switched to Computed — cost basis compounding at an assumed ${rate}% p.a.`, ...x.notes];
+    }
+  }
+
   function finish(a, x) {
     const d = a.data || {};
+    applyModeOverride(a, x, d);
     const netShare = x.v * x.share;
     const investedShare = (x.invested || 0) * x.share;
     const absGain = x.invested != null ? x.grossValue - x.invested : null;
@@ -782,7 +810,8 @@ const Store = (() => {
           const band = Fin.fdBand(fd, years, steps);
           return val.share === 1 ? band : band.map(p => ({ t: p.t, p10: p.p10 * val.share, p50: p.p50 * val.share, p90: p.p90 * val.share }));
         }
-        const r = (d.growthRate != null ? d.growthRate : 7) / 100;
+        const r = (d.assumedRate != null ? d.assumedRate
+          : d.growthRate != null ? d.growthRate : 7) / 100;
         return Fin.deterministicBand(v0, r, years, steps);
       }
       default: { // manual

@@ -144,7 +144,7 @@ const Forms = (() => {
       <td><input type="date" data-lot="date" value="${esc(l.date || '')}"/></td>
       <td><input type="number" step="any" data-lot="qty" value="${l.qty != null ? l.qty : ''}" placeholder="Qty"/></td>
       <td><input type="number" step="any" data-lot="price" value="${l.price != null ? l.price : ''}" placeholder="Price"/></td>
-      <td><button type="button" class="rm" title="Remove">✕</button></td>
+      <td><button type="button" class="rm" title="Remove" aria-label="Remove this lot"><span aria-hidden="true">✕</span></button></td>
     </tr>`;
   }
   function wireLots(onChange) {

@@ -119,7 +119,7 @@ const Views = (() => {
     return `
       <div class="page-head">
         <div>
-          <div class="page-title">Dashboard</div>
+          <h1 class="page-title">Dashboard</h1>
           <div class="page-sub">Your whole net worth — assets minus liabilities, live and honest.</div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -330,7 +330,7 @@ const Views = (() => {
     return `
       <div class="page-head">
         <div>
-          <div class="page-title">Holdings</div>
+          <h1 class="page-title">Holdings</h1>
           <div class="page-sub">Everything you own, by asset class. Click a row for detail, growth and its projection.</div>
         </div>
         <button class="btn primary" onclick="Router.go('/add/${tab}')">+ Add ${t.label.replace(/s$/, '').toLowerCase()}</button>
@@ -383,7 +383,7 @@ const Views = (() => {
     return `
       <div class="page-head">
         <div>
-          <div class="page-title">Liabilities</div>
+          <h1 class="page-title">Liabilities</h1>
           <div class="page-sub">What you owe. Loans amortize down deterministically; net worth counts assets minus this total.</div>
         </div>
         <button class="btn primary" onclick="Router.go('/add-liability')">+ Add liability</button>
@@ -553,7 +553,7 @@ const Views = (() => {
       <button class="back-link" onclick="history.length > 1 ? history.back() : Router.go('/holdings/${a.type}')">← Back</button>
       <div class="page-head">
         <div>
-          <div class="page-title">${esc(a.label)} ${modeTag(v.mode)}</div>
+          <h1 class="page-title">${esc(a.label)} ${modeTag(v.mode)}</h1>
           <div class="page-sub">${esc(v.sub)}</div>
         </div>
         <div style="display:flex;gap:10px">
@@ -568,6 +568,24 @@ const Views = (() => {
         <div class="card"><div class="stat-label">Invested (cost basis)</div><div class="stat-value">${v.invested != null ? fmtINR(v.invested) : '—'}</div><div class="stat-sub">${a.type === 'esop' ? 'grants have no cash cost' : 'acquired ' + fmtDate(a.acquiredOn)}</div></div>
         <div class="card"><div class="stat-label">Absolute return</div><div class="stat-value ${(v.absGain || 0) >= 0 ? 'pos-t' : 'neg-t'}">${v.absGain != null ? fmtINR(v.absGain, { compact: true }) : '—'}</div><div class="stat-sub">${v.absPct != null ? fmtPct(v.absPct) : '—'} on invested</div></div>
         <div class="card"><div class="stat-label">Annualized (${v.annualizedMethod})</div><div class="stat-value">${v.annualized != null ? `<span class="${v.annualized >= 0 ? 'pos-t' : 'neg-t'}">${fmtPct(v.annualized)}</span>` : '—'}</div><div class="stat-sub">${v.annualizedMethod === 'XIRR' ? 'true rate across your staggered buys' : v.annualizedMethod === 'Rate' ? 'contract rate' : v.annualizedMethod === 'CAGR' ? 'single lump-sum holding' : ''}</div></div>
+      </div>
+
+      <div class="card" style="margin-top:18px">
+        <div class="card-title">Valuation mode</div>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <div class="seg" role="radiogroup" aria-label="Valuation mode for ${esc(a.label)}">
+            ${['live', 'computed', 'manual'].map(m => {
+              const natural = Store.TYPES[a.type].mode;
+              const supported = m !== 'live' || natural === 'live';
+              const on = v.mode === m;
+              const lbl = m === 'live' ? '● Live' : m === 'computed' ? '◆ Computed' : '✎ Manual';
+              return `<button role="radio" aria-checked="${on}" class="${on ? 'on' : ''}" ${supported ? '' : 'disabled title="No market feed for this asset type"'}
+                onclick="UI.setValuationMode('${a.id}', '${m}')" aria-label="${m === 'live' ? 'Live market pricing' : m === 'computed' ? 'Computed from a rate' : 'Manual estimate'}">${lbl}</button>`;
+            }).join('')}
+          </div>
+          <span class="small faint">${v.mode === 'live' ? 'Priced from the market feed.' : v.mode === 'computed' ? 'Deterministic compounding — no market noise.' : 'Your estimate; keep it fresh.'}
+            ${a.valuationMode && a.valuationMode !== Store.TYPES[a.type].mode ? `Default for ${Store.TYPES[a.type].label} is <b>${Store.TYPES[a.type].mode}</b>.` : ''}</span>
+        </div>
       </div>
 
       ${v.notes.length ? `<div class="card" style="margin-top:18px"><div class="card-title">Notes on this holding</div>${v.notes.map(n => `<div class="small dim" style="padding:4px 0">• ${n}</div>`).join('')}</div>` : ''}
@@ -620,7 +638,7 @@ const Views = (() => {
     return `
       <div class="page-head">
         <div>
-          <div class="page-title">Projections</div>
+          <h1 class="page-title">Projections</h1>
           <div class="page-sub">Each asset is projected by its valuation mode — Monte Carlo bands for market-linked holdings (width scales with volatility), single deterministic curves for contractual and assumed-rate assets — then aggregated. Liabilities amortize down deterministically.</div>
         </div>
         <div class="proj-controls">
@@ -698,7 +716,7 @@ const Views = (() => {
     return `
       <div class="page-head">
         <div>
-          <div class="page-title">Settings</div>
+          <h1 class="page-title">Settings</h1>
           <div class="page-sub">Where every number comes from, and how the app looks.</div>
         </div>
       </div>
@@ -784,7 +802,7 @@ const Views = (() => {
     return `
       <div class="page-head">
         <div>
-          <div class="page-title">Goals</div>
+          <h1 class="page-title">Goals</h1>
           <div class="page-sub">Net-worth milestones with live progress and a projected achievement date from your recent growth rate.</div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">

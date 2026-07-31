@@ -164,7 +164,7 @@ const Auth = (() => {
             <div class="brand-sub">AI · Net worth</div>
           </div>
         </div>
-        <div class="page-title" style="font-size:19px">${title}</div>
+        <h1 class="page-title" style="font-size:19px">${title}</h1>
         <div class="page-sub" style="margin-bottom:18px">${sub}</div>
         ${inner}
       </div>
@@ -314,7 +314,7 @@ const Auth = (() => {
     if (!enabled()) {
       view().innerHTML = `
         <div class="page-head"><div>
-          <div class="page-title">Account</div>
+          <h1 class="page-title">Account</h1>
           <div class="page-sub">Local mode — no account needed.</div>
         </div></div>
         <div class="card"><div class="card-title">Local data</div>
@@ -332,7 +332,7 @@ const Auth = (() => {
     const demo = isDemo();
     view().innerHTML = `
       <div class="page-head"><div>
-        <div class="page-title">Account</div>
+        <h1 class="page-title">Account</h1>
         <div class="page-sub">Profile, security and your data.</div>
       </div></div>
 

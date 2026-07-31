@@ -5,6 +5,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>WealthForge AI — Track, grow & project your net worth</title>
   <meta name="description" content="WealthForge AI: add every asset you already own — equity, mutual funds, FDs, EPF/PPF/NPS, ESOPs, gold, real estate, crypto — plus your loans, and see honest net worth, growth % and projections."/>
+
+  <!-- Open Graph / social previews. og:image resolves against the deployed
+       origin; scrapers that require an absolute URL get it via og:url. -->
+  <meta property="og:title" content="WealthForge AI — Track, grow & project your net worth"/>
+  <meta property="og:description" content="Add every asset you own, plus your loans, and see honest net worth, growth % and projections."/>
+  <meta property="og:type" content="website"/>
+  <meta property="og:url" content="/"/>
+  <meta property="og:image" content="/og-image.png"/>
+  <meta property="og:image:width" content="1200"/>
+  <meta property="og:image:height" content="630"/>
+  <meta name="twitter:card" content="summary_large_image"/>
+  <meta name="twitter:title" content="WealthForge AI — Track, grow & project your net worth"/>
+  <meta name="twitter:description" content="Add every asset you own, plus your loans, and see honest net worth, growth % and projections."/>
+  <meta name="twitter:image" content="/og-image.png"/>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚒️</text></svg>"/>
   <script>
     // apply saved theme before first paint to avoid a flash
@@ -23,25 +37,25 @@
       </div>
 
       <button class="nav-item" data-route="dashboard" onclick="Router.go('/dashboard')">
-        <span class="ico">◧</span> Dashboard
+        <span class="ico" aria-hidden="true">◧</span> Dashboard
       </button>
       <button class="nav-item" data-route="holdings" onclick="Router.go('/holdings/equity')">
-        <span class="ico">☰</span> Holdings
+        <span class="ico" aria-hidden="true">☰</span> Holdings
       </button>
       <button class="nav-item" data-route="liabilities" onclick="Router.go('/liabilities')">
-        <span class="ico">▤</span> Liabilities
+        <span class="ico" aria-hidden="true">▤</span> Liabilities
       </button>
       <button class="nav-item" data-route="projections" onclick="Router.go('/projections')">
-        <span class="ico">◔</span> Projections
+        <span class="ico" aria-hidden="true">◔</span> Projections
       </button>
       <button class="nav-item" data-route="goals" onclick="Router.go('/goals')">
-        <span class="ico">◎</span> Goals
+        <span class="ico" aria-hidden="true">◎</span> Goals
       </button>
       <button class="nav-item" data-route="settings" onclick="Router.go('/settings')">
-        <span class="ico">⚙</span> Settings
+        <span class="ico" aria-hidden="true">⚙</span> Settings
       </button>
 
-      <button class="sidebar-cta" onclick="Router.go('/add')">＋ Add asset</button>
+      <button class="sidebar-cta" onclick="Router.go('/add')" aria-label="Add asset"><span aria-hidden="true">＋</span> Add asset</button>
 
       <div class="sidebar-account" id="sidebar_account"></div>
 
@@ -59,12 +73,12 @@
       </div>
     </main>
 
-    <nav class="bottom-nav">
-      <button data-route="dashboard" onclick="Router.go('/dashboard')"><span class="bn-ico">◧</span>Home</button>
-      <button data-route="holdings" onclick="Router.go('/holdings/equity')"><span class="bn-ico">☰</span>Holdings</button>
-      <button class="bn-add" onclick="Router.go('/add')"><span class="bn-ico">＋</span>Add</button>
-      <button data-route="liabilities" onclick="Router.go('/liabilities')"><span class="bn-ico">▤</span>Loans</button>
-      <button data-route="projections" onclick="Router.go('/projections')"><span class="bn-ico">◔</span>Project</button>
+    <nav class="bottom-nav" aria-label="Primary">
+      <button data-route="dashboard" onclick="Router.go('/dashboard')" aria-label="Home — dashboard"><span class="bn-ico" aria-hidden="true">◧</span>Home</button>
+      <button data-route="holdings" onclick="Router.go('/holdings/equity')" aria-label="Holdings"><span class="bn-ico" aria-hidden="true">☰</span>Holdings</button>
+      <button class="bn-add" onclick="Router.go('/add')" aria-label="Add asset"><span class="bn-ico" aria-hidden="true">＋</span>Add</button>
+      <button data-route="liabilities" onclick="Router.go('/liabilities')" aria-label="Loans and liabilities"><span class="bn-ico" aria-hidden="true">▤</span>Loans</button>
+      <button data-route="projections" onclick="Router.go('/projections')" aria-label="Growth projections"><span class="bn-ico" aria-hidden="true">◔</span>Growth</button>
     </nav>
   </div>
 

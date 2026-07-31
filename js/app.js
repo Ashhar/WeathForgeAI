@@ -98,6 +98,80 @@ const UI = (() => {
     });
   }
 
+  // ---------- valuation-mode toggle (C3) ----------
+  function promptModal({ title, body, label, value, type, onOk }) {
+    const back = document.createElement('div');
+    back.className = 'modal-backdrop';
+    back.innerHTML = `<div class="modal" role="dialog" aria-label="${title}">
+      <h3>${title}</h3>
+      <p>${body}</p>
+      <div class="field" style="margin-bottom:16px">
+        <label for="pm_input">${label}</label>
+        <input type="${type || 'number'}" id="pm_input" value="${value != null ? value : ''}"/>
+        <div class="err" id="pm_err" role="alert"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" data-cancel>Cancel</button>
+        <button class="btn primary" data-ok>Apply</button>
+      </div>
+    </div>`;
+    document.body.appendChild(back);
+    const input = back.querySelector('#pm_input');
+    input.focus(); input.select();
+    back.addEventListener('click', e => { if (e.target === back) back.remove(); });
+    back.querySelector('[data-cancel]').addEventListener('click', () => back.remove());
+    const submit = () => {
+      const n = parseFloat(input.value);
+      if (!isFinite(n)) { back.querySelector('#pm_err').textContent = 'Enter a number'; return; }
+      back.remove();
+      onOk(n);
+    };
+    back.querySelector('[data-ok]').addEventListener('click', submit);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+  }
+
+  function setValuationMode(id, mode) {
+    if (demoBlocked()) return;
+    const a = Store.get(id);
+    if (!a) return;
+    const natural = Store.TYPES[a.type].mode;
+    const v = Store.valuation(a);
+    if (mode === v.mode) return;
+    if (mode === natural) {
+      Store.update(id, { valuationMode: null });
+      toast(`Back to ${natural} valuation`);
+      route();
+    } else if (mode === 'manual') {
+      promptModal({
+        title: 'Switch to manual valuation',
+        body: 'The holding will be valued at your estimate until you change it — no market feed, no compounding.',
+        label: "Today's value (₹)",
+        value: Math.round(v.grossValue || 0),
+        onOk: n => {
+          Store.update(id, { valuationMode: 'manual', data: { ...(a.data || {}), manualValue: n, manualValueDate: Fin.todayISO() } });
+          toast('Switched to manual valuation');
+          route();
+        },
+      });
+    } else if (mode === 'computed') {
+      promptModal({
+        title: 'Switch to computed valuation',
+        body: 'The holding will compound its cost basis at a fixed assumed rate — deterministic, no market noise.',
+        label: 'Assumed growth rate (% p.a.)',
+        value: a.data && a.data.assumedRate != null ? a.data.assumedRate : 8,
+        onOk: n => {
+          Store.update(id, { valuationMode: 'computed', data: { ...(a.data || {}), assumedRate: n } });
+          toast('Switched to computed valuation');
+          route();
+        },
+      });
+    } else if (mode === 'live' && natural === 'live') {
+      Store.update(id, { valuationMode: null });
+      toast('Back to live pricing');
+      route();
+    }
+  }
+
   // ---------- export ----------
   function exportModal() {
     const back = document.createElement('div');
@@ -216,7 +290,7 @@ const UI = (() => {
     return `
       <div class="page-head">
         <div>
-          <div class="page-title">Add an asset you already own</div>
+          <h1 class="page-title">Add an asset you already own</h1>
           <div class="page-sub">Step 1 — pick the type; the form reshapes to it. The backbone is always the same: <b>what & how much</b>, <b>what it cost</b>, and <b>when</b>.</div>
         </div>
       </div>
@@ -434,6 +508,25 @@ const UI = (() => {
     });
   }
 
+  // C6: first-visit disclaimer — dismissed once, persisted locally
+  function firstVisitDisclaimer() {
+    try { if (localStorage.getItem('wf.disclaimerAck')) return; } catch (e) { return; }
+    const back = document.createElement('div');
+    back.className = 'modal-backdrop';
+    back.innerHTML = `<div class="modal" role="dialog" aria-label="Before you begin">
+      <h3>Before you begin</h3>
+      <p><b>WealthForge AI is informational, not financial advice.</b> Values are as you enter or estimate them, market prices are indicative, and every projection — bands, goal dates, insights — is an illustration built on assumptions, not a promise. Please verify important numbers with your own statements and, for decisions, a qualified adviser.</p>
+      <div class="modal-actions">
+        <button class="btn primary" data-ok>Got it — continue</button>
+      </div>
+    </div>`;
+    document.body.appendChild(back);
+    back.querySelector('[data-ok]').addEventListener('click', () => {
+      try { localStorage.setItem('wf.disclaimerAck', new Date().toISOString()); } catch (e) { /* ignore */ }
+      back.remove();
+    });
+  }
+
   async function boot() {
     initTheme();
     if (Auth.enabled()) {
@@ -445,6 +538,7 @@ const UI = (() => {
     Auth.applyChrome();
     Router.init(route);
     route();
+    firstVisitDisclaimer();
   }
 
   function setHistRange(key) {
@@ -454,7 +548,7 @@ const UI = (() => {
 
   return {
     boot, toast, confirmDelete, confirmDeleteLiability, resetDemo, setTheme, route, setHistRange,
-    goalModal, confirmDeleteGoal, exportModal,
+    goalModal, confirmDeleteGoal, exportModal, setValuationMode,
   };
 })();
 
