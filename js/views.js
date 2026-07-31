@@ -156,20 +156,23 @@ const Views = (() => {
 
       ${historyCard()}
 
-      ${insights.length ? `
       <div class="card" style="margin-top:18px">
-        <div class="card-title">Insights <span class="right dim">informational, not advice</span></div>
-        <div class="insight-list">
+        <div class="card-title">AI Insights <span class="right dim">rules over your own data</span></div>
+        ${insights.length ? `<div class="insight-list">
           ${insights.map(i => `<div class="insight sev-${i.severity}">
-            <div class="insight-icon">${i.icon}</div>
+            <div class="insight-icon" aria-hidden="true">${i.icon}</div>
             <div>
               <div class="insight-title">${esc(i.title)}</div>
               <div class="insight-body">${esc(i.body)}</div>
               <div class="insight-src">Based on: ${i.sources.map(s => `<span class="chip">${esc(s)}</span>`).join(' ')}</div>
             </div>
           </div>`).join('')}
-        </div>
-      </div>` : ''}
+        </div>` : `<div class="empty" style="padding:26px 20px">
+          <p><b>Add more data to unlock insights.</b></p>
+          <p class="small" style="margin-top:6px">Insights appear once you have a few holdings, liabilities or days of history to reason over.</p>
+        </div>`}
+        <div class="disclaimer" style="margin-top:12px">⚠️ <span>Insights are <b>illustrative, not financial advice</b> — they're computed from your own data and simple rules, with no knowledge of your full situation.</span></div>
+      </div>
 
       <div class="grid cols-2" style="margin-top:18px">
         <div class="card">
