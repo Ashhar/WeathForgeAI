@@ -18,5 +18,6 @@ import '../js/insights.js';
 import '../js/charts.js';
 import '../js/forms.js';
 import '../js/views.js';
+import '../js/pdf-font.js';
 import '../js/export.js';
 import '../js/app.js';

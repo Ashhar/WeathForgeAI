@@ -195,9 +195,9 @@ const Charts = (() => {
       <path d="${areaD}" fill="url(#ag${gid})"/>
       <path d="${d}" fill="none" stroke="${color}" stroke-width="2.2"/>
       <circle cx="${x(new Date(last.date).getTime())}" cy="${y(last.value)}" r="4" fill="${color}" stroke="${th.surface}" stroke-width="2"/>
-      <line data-crosshair x1="0" x2="0" y1="${L.padT}" y2="${H - padB}" stroke="${th.label}" stroke-width="1" stroke-dasharray="3 3" opacity="0"/>
-      <circle data-hoverdot r="4" fill="${color}" stroke="${th.surface}" stroke-width="2" opacity="0"/>
-      <rect data-hit x="${padL}" y="${L.padT}" width="${W - padL - padR}" height="${H - L.padT - padB}" fill="transparent"/>
+      <line data-crosshair="1" x1="0" x2="0" y1="${L.padT}" y2="${H - padB}" stroke="${th.label}" stroke-width="1" stroke-dasharray="3 3" opacity="0"/>
+      <circle data-hoverdot="1" r="4" fill="${color}" stroke="${th.surface}" stroke-width="2" opacity="0"/>
+      <rect data-hit="1" x="${padL}" y="${L.padT}" width="${W - padL - padR}" height="${H - L.padT - padB}" fill="transparent"/>
     </svg>`;
   }
 

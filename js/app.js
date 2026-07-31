@@ -98,6 +98,26 @@ const UI = (() => {
     });
   }
 
+  // ---------- export ----------
+  function exportModal() {
+    const back = document.createElement('div');
+    back.className = 'modal-backdrop';
+    back.innerHTML = `<div class="modal" role="dialog" aria-label="Export your data">
+      <h3>Export your data</h3>
+      <p>Everything stays on your device — files are generated locally.${Store.isReadOnly() ? ' Demo exports are watermarked.' : ''}</p>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
+        <button class="btn" data-csv style="justify-content:flex-start">🗃️ CSV backup — assets, liabilities & history (3 files)</button>
+        <button class="btn" data-pdf style="justify-content:flex-start">📄 One-page portfolio PDF</button>
+      </div>
+      <div class="modal-actions"><button class="btn" data-cancel>Close</button></div>
+    </div>`;
+    document.body.appendChild(back);
+    back.addEventListener('click', e => { if (e.target === back) back.remove(); });
+    back.querySelector('[data-cancel]').addEventListener('click', () => back.remove());
+    back.querySelector('[data-csv]').addEventListener('click', () => { back.remove(); ExportKit.downloadAllCsv(); });
+    back.querySelector('[data-pdf]').addEventListener('click', () => { back.remove(); ExportKit.downloadPdf(); });
+  }
+
   // ---------- goals ----------
   function goalModal(editId) {
     if (demoBlocked()) return;
@@ -434,7 +454,7 @@ const UI = (() => {
 
   return {
     boot, toast, confirmDelete, confirmDeleteLiability, resetDemo, setTheme, route, setHistRange,
-    goalModal, confirmDeleteGoal,
+    goalModal, confirmDeleteGoal, exportModal,
   };
 })();
 

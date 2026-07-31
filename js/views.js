@@ -122,7 +122,10 @@ const Views = (() => {
           <div class="page-title">Dashboard</div>
           <div class="page-sub">Your whole net worth — assets minus liabilities, live and honest.</div>
         </div>
-        <button class="btn primary" onclick="Router.go('/add')">+ Add asset</button>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn" onclick="UI.exportModal()" aria-label="Export portfolio data">⬇ Export</button>
+          <button class="btn primary" onclick="Router.go('/add')">+ Add asset</button>
+        </div>
       </div>
 
       <div class="hero">
