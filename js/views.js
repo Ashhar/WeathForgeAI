@@ -44,7 +44,7 @@ const Views = (() => {
       const typeAssets = vals.filter(x => x.a.type === s.type);
       const inv = typeAssets.reduce((sum, x) => sum + (x.v.investedShare || 0), 0);
       const gain = inv > 0 ? (s.value - inv) / inv : null;
-      return `<div class="card" style="cursor:pointer" onclick="location.hash='#/holdings/${s.type}'">
+      return `<div class="card" style="cursor:pointer" onclick="Router.go('/holdings/${s.type}')">
         <div style="display:flex;justify-content:space-between;align-items:flex-start">
           <div class="stat-label">${Store.TYPES[s.type].icon} ${esc(s.label)}</div>
           ${modeTag(Store.TYPES[s.type].mode)}
@@ -62,7 +62,7 @@ const Views = (() => {
           <div class="page-title">Dashboard</div>
           <div class="page-sub">Your whole net worth — assets minus liabilities, live and honest.</div>
         </div>
-        <button class="btn primary" onclick="location.hash='#/add'">+ Add asset</button>
+        <button class="btn primary" onclick="Router.go('/add')">+ Add asset</button>
       </div>
 
       <div class="hero">
@@ -125,13 +125,13 @@ const Views = (() => {
                 <span class="sw" style="background:var(--text-faint)"></span>
                 <span class="nm">Liabilities (owed)</span>
                 <span class="vl">−${fmtINR(p.totalLiabilities, { compact: true })}</span>
-                <span class="pc"><a href="#/liabilities">view</a></span>
+                <span class="pc"><a href="/liabilities">view</a></span>
               </div>` : ''}
             </div>
           </div>
         </div>
         <div class="card">
-          <div class="card-title">10-year net-worth outlook <span class="right"><a href="#/projections">Full projections →</a></span></div>
+          <div class="card-title">10-year net-worth outlook <span class="right"><a href="/projections">Full projections →</a></span></div>
           <div class="chart-box">${Charts.fan(band, { height: 210 })}</div>
           <div class="legend">
             <span class="key"><span class="sw" style="background:#e8b64c"></span>Median path</span>
@@ -150,7 +150,7 @@ const Views = (() => {
         <div class="card">
           <div class="card-title">Today's movers</div>
           ${movers.length ? `<div class="tbl-wrap"><table class="tbl"><tbody>
-            ${movers.map(x => `<tr onclick="location.hash='#/asset/${x.a.id}'">
+            ${movers.map(x => `<tr onclick="Router.go('/asset/${x.a.id}')">
               <td><div class="asset-name">${esc(x.a.label)}</div><div class="asset-sub">${esc(x.v.sub)}</div></td>
               <td class="num">${fmtINR(x.v.currentValue, { compact: true })}</td>
               <td class="num">${deltaChip(x.v.dayChangePct, { digits: 2 })}</td>
@@ -161,7 +161,7 @@ const Views = (() => {
           <div class="card-title">Best performers (annualized)</div>
           <div class="tbl-wrap"><table class="tbl"><tbody>
             ${vals.filter(x => x.v.annualized != null && x.v.annualizedMethod !== 'Rate').sort((a, b) => b.v.annualized - a.v.annualized).slice(0, 5)
-              .map(x => `<tr onclick="location.hash='#/asset/${x.a.id}'">
+              .map(x => `<tr onclick="Router.go('/asset/${x.a.id}')">
                 <td><div class="asset-name">${esc(x.a.label)}</div><div class="asset-sub">${Store.TYPES[x.a.type].label} · ${x.v.annualizedMethod}</div></td>
                 <td class="num">${fmtINR(x.v.currentValue, { compact: true })}</td>
                 <td class="num">${pctText(x.v.annualized)}</td>
@@ -242,7 +242,7 @@ const Views = (() => {
       default:
         cells = `${name}<td>${esc(d.subType || d.subPattern || '')}</td><td class="num">${fmtINR(d.costBasis, { compact: true })}</td><td class="num"><b>${fmtINR(v.grossValue, { compact: true })}</b></td><td class="num">${d.growthRate != null ? (d.growthRate > 0 ? '+' : '') + d.growthRate + '%' : '—'}</td>${pnl}${mode}`;
     }
-    return `<tr onclick="location.hash='#/asset/${a.id}'" ${highlight === a.id ? 'class="row-highlight"' : ''}>${cells}</tr>`;
+    return `<tr onclick="Router.go('/asset/${a.id}')" ${highlight === a.id ? 'class="row-highlight"' : ''}>${cells}</tr>`;
   }
 
   function holdings(tab, highlightId) {
@@ -262,11 +262,11 @@ const Views = (() => {
           <div class="page-title">Holdings</div>
           <div class="page-sub">Everything you own, by asset class. Click a row for detail, growth and its projection.</div>
         </div>
-        <button class="btn primary" onclick="location.hash='#/add/${tab}'">+ Add ${t.label.replace(/s$/, '').toLowerCase()}</button>
+        <button class="btn primary" onclick="Router.go('/add/${tab}')">+ Add ${t.label.replace(/s$/, '').toLowerCase()}</button>
       </div>
       <div class="tabs">
-        ${Store.TYPE_ORDER.map(k => `<button class="tab ${k === tab ? 'active' : ''}" onclick="location.hash='#/holdings/${k}'">${Store.TYPES[k].icon} ${Store.TYPES[k].label}<span class="count">${Store.byType(k).length}</span></button>`).join('')}
-        <button class="tab liab-tab" onclick="location.hash='#/liabilities'">💳 Liabilities<span class="count">${Store.liabilities().length}</span></button>
+        ${Store.TYPE_ORDER.map(k => `<button class="tab ${k === tab ? 'active' : ''}" onclick="Router.go('/holdings/${k}')">${Store.TYPES[k].icon} ${Store.TYPES[k].label}<span class="count">${Store.byType(k).length}</span></button>`).join('')}
+        <button class="tab liab-tab" onclick="Router.go('/liabilities')">💳 Liabilities<span class="count">${Store.liabilities().length}</span></button>
       </div>
       ${assets.length ? `
         <div style="display:flex;gap:26px;margin-bottom:14px;flex-wrap:wrap">
@@ -285,7 +285,7 @@ const Views = (() => {
           <div class="big">${t.icon}</div>
           <p><b>No ${t.label.toLowerCase()} yet.</b></p>
           <p class="small" style="margin:8px 0 16px">${esc(t.desc)}</p>
-          <button class="btn primary" onclick="location.hash='#/add/${tab}'">+ Add your first</button>
+          <button class="btn primary" onclick="Router.go('/add/${tab}')">+ Add your first</button>
         </div></div>`}`;
   }
 
@@ -298,7 +298,7 @@ const Views = (() => {
       total += lv.balance; totalEmi += l.emi || 0; totalInterest += lv.interestRemaining || 0;
       const t = Store.LIABILITY_TYPES[l.type] || Store.LIABILITY_TYPES.otherloan;
       const linked = l.linkedAssetId ? Store.get(l.linkedAssetId) : null;
-      return `<tr onclick="location.hash='#/edit-liability/${l.id}'" ${highlightId === l.id ? 'class="row-highlight"' : ''}>
+      return `<tr onclick="Router.go('/edit-liability/${l.id}')" ${highlightId === l.id ? 'class="row-highlight"' : ''}>
         <td><div class="asset-name">${t.icon} ${esc(l.label || t.label)}</div><div class="asset-sub">${esc(l.lender || '')}${linked ? ` · linked to ${esc(linked.label)}` : ''}</div></td>
         <td class="num"><b>${fmtINR(lv.balance, { compact: true })}</b></td>
         <td class="num">${l.rate}%</td>
@@ -315,7 +315,7 @@ const Views = (() => {
           <div class="page-title">Liabilities</div>
           <div class="page-sub">What you owe. Loans amortize down deterministically; net worth counts assets minus this total.</div>
         </div>
-        <button class="btn primary" onclick="location.hash='#/add-liability'">+ Add liability</button>
+        <button class="btn primary" onclick="Router.go('/add-liability')">+ Add liability</button>
       </div>
       ${liabs.length ? `
         <div style="display:flex;gap:26px;margin-bottom:14px;flex-wrap:wrap">
@@ -335,14 +335,14 @@ const Views = (() => {
           <div class="big">💳</div>
           <p><b>No liabilities tracked.</b></p>
           <p class="small" style="margin:8px 0 16px">Add home/car/personal/education loans or card balances so net worth is honest: assets − liabilities.</p>
-          <button class="btn primary" onclick="location.hash='#/add-liability'">+ Add your first</button>
+          <button class="btn primary" onclick="Router.go('/add-liability')">+ Add your first</button>
         </div></div>`}`;
   }
 
   // ============ ASSET DETAIL ============
   function assetDetail(id) {
     const a = Store.get(id);
-    if (!a) return `<div class="card"><div class="empty">Asset not found. <a href="#/holdings/equity">Back to holdings</a></div></div>`;
+    if (!a) return `<div class="card"><div class="empty">Asset not found. <a href="/holdings/equity">Back to holdings</a></div></div>`;
     const v = Store.valuation(a);
     const d = a.data || {};
     const x = v.extra || {};
@@ -467,7 +467,7 @@ const Views = (() => {
       <div class="card">
         <div class="card-title">Manual valuation</div>
         <p class="dim small" style="margin-bottom:12px">This asset has no market feed — its current value is your estimate${d.lastRevaluedOn ? `, last revalued <b>${fmtDate(d.lastRevaluedOn)}</b>` : ''}. Keep it fresh.</p>
-        <button class="btn" onclick="location.hash='#/edit/${a.id}'">Update value</button>
+        <button class="btn" onclick="Router.go('/edit/${a.id}')">Update value</button>
       </div>` : '';
 
     const statementTypes = { epf: d.asOfDate, ppf: d.asOfDate, nps: d.asOfDate };
@@ -475,18 +475,18 @@ const Views = (() => {
       <div class="card">
         <div class="card-title">Statement freshness</div>
         <p class="dim small" style="margin-bottom:12px">Balance last updated from your statement on <b>${fmtDate(statementTypes[a.type])}</b> — contributions since are added at the contract rate. Update it when the next statement arrives.</p>
-        <button class="btn" onclick="location.hash='#/edit/${a.id}'">Update from statement</button>
+        <button class="btn" onclick="Router.go('/edit/${a.id}')">Update from statement</button>
       </div>` : '';
 
     return `
-      <button class="back-link" onclick="history.length > 1 ? history.back() : location.hash='#/holdings/${a.type}'">← Back</button>
+      <button class="back-link" onclick="history.length > 1 ? history.back() : Router.go('/holdings/${a.type}')">← Back</button>
       <div class="page-head">
         <div>
           <div class="page-title">${esc(a.label)} ${modeTag(v.mode)}</div>
           <div class="page-sub">${esc(v.sub)}</div>
         </div>
         <div style="display:flex;gap:10px">
-          <button class="btn" onclick="location.hash='#/edit/${a.id}'">✎ Edit</button>
+          <button class="btn" onclick="Router.go('/edit/${a.id}')">✎ Edit</button>
           <button class="btn danger" onclick="UI.confirmDelete('${a.id}')">Delete</button>
         </div>
       </div>
@@ -554,12 +554,12 @@ const Views = (() => {
         </div>
         <div class="proj-controls">
           <div class="seg">
-            <button class="${showNet ? 'on' : ''}" onclick="location.hash='#/projections/${horizon}/net'">Net worth</button>
-            <button class="${!showNet ? 'on' : ''}" onclick="location.hash='#/projections/${horizon}/assets'">Assets only</button>
+            <button class="${showNet ? 'on' : ''}" onclick="Router.go('/projections/${horizon}/net')">Net worth</button>
+            <button class="${!showNet ? 'on' : ''}" onclick="Router.go('/projections/${horizon}/assets')">Assets only</button>
           </div>
           <span class="dim small">Horizon</span>
           <div class="seg" id="horizon_seg">
-            ${[1, 3, 5, 10, 20].map(h => `<button class="${h === horizon ? 'on' : ''}" onclick="location.hash='#/projections/${h}/${showNet ? 'net' : 'assets'}'">${h}y</button>`).join('')}
+            ${[1, 3, 5, 10, 20].map(h => `<button class="${h === horizon ? 'on' : ''}" onclick="Router.go('/projections/${h}/${showNet ? ')net' : 'assets'}'">${h}y</button>`).join('')}
           </div>
         </div>
       </div>
@@ -588,14 +588,14 @@ const Views = (() => {
         <div class="tbl-wrap"><table class="tbl">
           <thead><tr><th>Holding</th><th>Method</th><th class="num">Today</th><th class="num">Median +${horizon}y</th><th class="num">Range (p10–p90)</th></tr></thead>
           <tbody>
-            ${rows.map(x => `<tr onclick="location.hash='#/asset/${x.a.id}'">
+            ${rows.map(x => `<tr onclick="Router.go('/asset/${x.a.id}')">
               <td><div class="asset-name">${esc(x.a.label)}</div><div class="asset-sub">${Store.TYPES[x.a.type].label}</div></td>
               <td>${modeTag(x.v.mode)} <span class="small faint">${x.v.mode === 'live' ? `σ ${(x.v.sigma * 100).toFixed(0)}%` : x.v.mode === 'computed' ? 'contractual' : 'assumed rate'}</span></td>
               <td class="num">${fmtINR(x.v.currentValue, { compact: true })}</td>
               <td class="num"><b>${fmtINR(x.e.p50, { compact: true })}</b></td>
               <td class="num">${Math.abs(x.e.p90 - x.e.p10) < Math.max(1, x.e.p50 * 0.001) ? '<span class="dim">deterministic</span>' : `${fmtINR(x.e.p10, { compact: true })} – ${fmtINR(x.e.p90, { compact: true })}`}</td>
             </tr>`).join('')}
-            ${liabNow > 0 ? `<tr onclick="location.hash='#/liabilities'">
+            ${liabNow > 0 ? `<tr onclick="Router.go('/liabilities')">
               <td><div class="asset-name">Liabilities (all)</div><div class="asset-sub">amortizing down</div></td>
               <td><span class="chip">owed</span></td>
               <td class="num">−${fmtINR(liabNow, { compact: true })}</td>
@@ -661,5 +661,15 @@ const Views = (() => {
       </div>`;
   }
 
-  return { dashboard, holdings, liabilitiesView, assetDetail, projections, settings };
+  // ============ 404 ============
+  function notFound() {
+    return `<div class="card"><div class="empty">
+      <div class="big" aria-hidden="true">🧭</div>
+      <p><b>Page not found.</b></p>
+      <p class="small" style="margin:8px 0 16px">The page <code>${esc(Router.path())}</code> doesn't exist. It may have moved, or the link is wrong.</p>
+      <a class="btn primary" href="/dashboard">Go to dashboard</a>
+    </div></div>`;
+  }
+
+  return { dashboard, holdings, liabilitiesView, assetDetail, projections, settings, notFound };
 })();

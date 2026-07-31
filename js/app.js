@@ -1,11 +1,13 @@
 /* ============================================================
-   WealthForge AI — app shell: hash router, add/edit flows,
-   grouped type picker, liabilities, theme toggle, modals, boot.
+   WealthForge AI — app shell: route handling (history routing
+   via js/router.js), add/edit flows, grouped type picker,
+   liabilities, theme toggle, modals, boot.
    Routes:
-     #/dashboard              #/holdings/:type       #/asset/:id
-     #/add  #/add/:type       #/edit/:id
-     #/liabilities            #/add-liability        #/edit-liability/:id
-     #/projections/:years?/:mode?                    #/settings
+     /dashboard              /holdings/:type       /asset/:id
+     /add  /add/:type        /edit/:id
+     /liabilities            /add-liability        /edit-liability/:id
+     /projections/:years?/:mode?                   /settings
+     (unknown → 404)
    ============================================================ */
 
 const UI = (() => {
@@ -67,7 +69,7 @@ const UI = (() => {
         const type = a.type;
         Store.remove(id);
         toast('Holding deleted');
-        location.hash = `#/holdings/${type}`;
+        Router.go(`/holdings/${type}`);
       },
     });
   }
@@ -82,8 +84,7 @@ const UI = (() => {
       onOk: () => {
         Store.removeLiability(id);
         toast('Liability deleted');
-        location.hash = '#/liabilities';
-        route();
+        Router.go('/liabilities');
       },
     });
   }
@@ -103,7 +104,7 @@ const UI = (() => {
         <div class="type-grid">
           ${g.types.map(k => {
             const t = Store.TYPES[k];
-            return `<button class="type-card" onclick="location.hash='#/add/${k}'">
+            return `<button class="type-card" onclick="Router.go('/add/${k}')">
               <div class="t-ico">${t.icon}</div>
               <div class="t-name">${t.label}</div>
               <div class="t-desc">${t.desc}</div>
@@ -113,7 +114,7 @@ const UI = (() => {
         </div>`).join('')}
       <div class="picker-group-title">Liabilities</div>
       <div class="type-grid">
-        <button class="type-card" onclick="location.hash='#/add-liability'">
+        <button class="type-card" onclick="Router.go('/add-liability')">
           <div class="t-ico">💳</div>
           <div class="t-name">Loan / liability</div>
           <div class="t-desc">Home, car, personal, education loans & card balances — net worth = assets − liabilities</div>
@@ -126,10 +127,10 @@ const UI = (() => {
   function addEditForm(type, editId) {
     const existing = editId ? Store.get(editId) : null;
     if (editId && !existing) { view().innerHTML = '<div class="card"><div class="empty">Asset not found.</div></div>'; return; }
-    if (!Store.TYPES[type]) { location.hash = '#/add'; return; }
+    if (!Store.TYPES[type]) { Router.go('/add'); return; }
 
     view().innerHTML = `
-      <button class="back-link" onclick="location.hash='${editId ? `#/asset/${editId}` : '#/add'}'">← ${editId ? 'Back to asset' : 'Choose a different type'}</button>
+      <button class="back-link" onclick="Router.go('${editId ? `/asset/${editId}` : '/add'}')">← ${editId ? 'Back to asset' : 'Choose a different type'}</button>
       <div class="card" style="max-width:860px">
         <div id="form_container"></div>
         <div class="form-actions">
@@ -144,7 +145,7 @@ const UI = (() => {
     Forms.render(document.getElementById('form_container'), type, existing);
 
     document.getElementById('form_cancel').addEventListener('click', () => {
-      location.hash = editId ? `#/asset/${editId}` : `#/holdings/${type}`;
+      Router.go(editId ? `/asset/${editId}` : `/holdings/${type}`);
     });
     document.getElementById('form_save').addEventListener('click', () => {
       const res = Forms.collect(type);
@@ -158,8 +159,7 @@ const UI = (() => {
         highlightId = added.id;
         toast('Added to your portfolio');
       }
-      location.hash = `#/holdings/${type}`;
-      route();
+      Router.go(`/holdings/${type}`);
     });
   }
 
@@ -168,7 +168,7 @@ const UI = (() => {
     if (editId && !existing) { view().innerHTML = '<div class="card"><div class="empty">Liability not found.</div></div>'; return; }
 
     view().innerHTML = `
-      <button class="back-link" onclick="location.hash='#/liabilities'">← Back to liabilities</button>
+      <button class="back-link" onclick="Router.go('/liabilities')">← Back to liabilities</button>
       <div class="card" style="max-width:860px">
         <div id="form_container"></div>
         <div class="form-actions">
@@ -182,7 +182,7 @@ const UI = (() => {
 
     Forms.renderLiability(document.getElementById('form_container'), existing);
 
-    document.getElementById('form_cancel').addEventListener('click', () => { location.hash = '#/liabilities'; });
+    document.getElementById('form_cancel').addEventListener('click', () => { Router.go('/liabilities'); });
     document.getElementById('form_save').addEventListener('click', () => {
       const res = Forms.collectLiability();
       if (!res.ok) { toast('Please fix the highlighted fields'); return; }
@@ -195,15 +195,13 @@ const UI = (() => {
         highlightId = added.id;
         toast('Liability added — net worth updated');
       }
-      location.hash = '#/liabilities';
-      route();
+      Router.go('/liabilities');
     });
   }
 
-  // ---------- router ----------
+  // ---------- route handling ----------
   function route() {
-    const hash = location.hash || '#/dashboard';
-    const parts = hash.replace(/^#\//, '').split('/');
+    const parts = Router.path().replace(/^\//, '').split('/');
     const page = parts[0] || 'dashboard';
 
     // nav active state (sidebar + mobile bottom bar)
@@ -253,7 +251,7 @@ const UI = (() => {
         liabilityForm(parts[1]);
         break;
       default:
-        view().innerHTML = Views.dashboard();
+        view().innerHTML = Views.notFound();
     }
     window.scrollTo(0, 0);
   }
@@ -274,8 +272,7 @@ const UI = (() => {
   function boot() {
     initTheme();
     Store.load();
-    window.addEventListener('hashchange', route);
-    if (!location.hash) location.hash = '#/dashboard';
+    Router.init(route);
     route();
   }
 

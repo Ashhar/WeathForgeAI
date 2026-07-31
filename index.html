@@ -23,23 +23,23 @@
         </div>
       </div>
 
-      <button class="nav-item" data-route="dashboard" onclick="location.hash='#/dashboard'">
+      <button class="nav-item" data-route="dashboard" onclick="Router.go('/dashboard')">
         <span class="ico">◧</span> Dashboard
       </button>
-      <button class="nav-item" data-route="holdings" onclick="location.hash='#/holdings/equity'">
+      <button class="nav-item" data-route="holdings" onclick="Router.go('/holdings/equity')">
         <span class="ico">☰</span> Holdings
       </button>
-      <button class="nav-item" data-route="liabilities" onclick="location.hash='#/liabilities'">
+      <button class="nav-item" data-route="liabilities" onclick="Router.go('/liabilities')">
         <span class="ico">▤</span> Liabilities
       </button>
-      <button class="nav-item" data-route="projections" onclick="location.hash='#/projections'">
+      <button class="nav-item" data-route="projections" onclick="Router.go('/projections')">
         <span class="ico">◔</span> Projections
       </button>
-      <button class="nav-item" data-route="settings" onclick="location.hash='#/settings'">
+      <button class="nav-item" data-route="settings" onclick="Router.go('/settings')">
         <span class="ico">⚙</span> Settings
       </button>
 
-      <button class="sidebar-cta" onclick="location.hash='#/add'">＋ Add asset</button>
+      <button class="sidebar-cta" onclick="Router.go('/add')">＋ Add asset</button>
 
       <div class="sidebar-foot">
         <div style="margin-bottom:8px">Values: <span class="tag live" style="font-size:9px"><span class="dot"></span>Live</span> <span class="tag computed" style="font-size:9px"><span class="dot"></span>Computed</span> <span class="tag manual" style="font-size:9px"><span class="dot"></span>Manual</span></div>
@@ -52,14 +52,15 @@
     </main>
 
     <nav class="bottom-nav">
-      <button data-route="dashboard" onclick="location.hash='#/dashboard'"><span class="bn-ico">◧</span>Home</button>
-      <button data-route="holdings" onclick="location.hash='#/holdings/equity'"><span class="bn-ico">☰</span>Holdings</button>
-      <button class="bn-add" onclick="location.hash='#/add'"><span class="bn-ico">＋</span>Add</button>
-      <button data-route="liabilities" onclick="location.hash='#/liabilities'"><span class="bn-ico">▤</span>Loans</button>
-      <button data-route="projections" onclick="location.hash='#/projections'"><span class="bn-ico">◔</span>Project</button>
+      <button data-route="dashboard" onclick="Router.go('/dashboard')"><span class="bn-ico">◧</span>Home</button>
+      <button data-route="holdings" onclick="Router.go('/holdings/equity')"><span class="bn-ico">☰</span>Holdings</button>
+      <button class="bn-add" onclick="Router.go('/add')"><span class="bn-ico">＋</span>Add</button>
+      <button data-route="liabilities" onclick="Router.go('/liabilities')"><span class="bn-ico">▤</span>Loans</button>
+      <button data-route="projections" onclick="Router.go('/projections')"><span class="bn-ico">◔</span>Project</button>
     </nav>
   </div>
 
+  <script src="js/router.js"></script>
   <script src="js/market.js"></script>
   <script src="js/finance.js"></script>
   <script src="js/store.js"></script>
