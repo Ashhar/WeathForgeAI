@@ -719,6 +719,21 @@ body.has-demo-banner .main { padding-top: 66px; }
   .demo-banner { left: 0; }
 }
 
+/* share card modal */
+.share-modal { max-width: 560px; }
+.share-preview {
+  border-radius: var(--radius-sm); overflow: hidden;
+  border: 1px solid var(--border); margin-bottom: 14px;
+  background: #0d1220;
+}
+.share-preview img { display: block; width: 100%; height: auto; }
+.share-toggle {
+  display: flex; align-items: center; gap: 9px;
+  font-size: 13px; color: var(--text-dim); cursor: pointer;
+  margin-bottom: 16px;
+}
+.share-toggle input { accent-color: var(--brand); width: 16px; height: 16px; }
+
 /* account danger zone */
 .danger-zone { border-color: rgba(244, 88, 111, 0.35); }
 

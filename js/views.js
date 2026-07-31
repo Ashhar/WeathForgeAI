@@ -123,6 +123,7 @@ const Views = (() => {
           <div class="page-sub">Your whole net worth — assets minus liabilities, live and honest.</div>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn" onclick="ShareKit.openModal()" aria-label="Share a redacted growth card">📤 Share</button>
           <button class="btn" onclick="UI.exportModal()" aria-label="Export portfolio data">⬇ Export</button>
           <button class="btn primary" onclick="Router.go('/add')">+ Add asset</button>
         </div>
