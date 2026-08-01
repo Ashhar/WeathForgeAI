@@ -1,0 +1,15 @@
+name: Keep Supabase Alive - Project 1
+
+on:
+  schedule:
+    - cron: "0 0 */5 * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ping Project
+        run: |
+          curl -I https://wealthforgeai.ashharnadeem.in
