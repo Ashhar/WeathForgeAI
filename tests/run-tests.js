@@ -190,6 +190,43 @@ const mis = Store.valuation({
 approx(mis.grossValue, 450000, 1e-9, 'PO MIS corpus stays at principal (payout scheme)');
 approx(mis.extra.monthlyIncome, 450000 * 0.074 / 12, 1e-9, 'PO MIS monthly income');
 
+// ---------- snapshots & goals ----------
+section('Snapshots & goals');
+const seededSnaps = Store.snapshots();
+ok(seededSnaps.length >= 50, 'fresh seed backfills ~12 months of weekly snapshots', `got ${seededSnaps.length}`);
+ok(seededSnaps.every((s, i) => i === 0 || s.date >= seededSnaps[i - 1].date), 'snapshots sorted by date');
+approx(seededSnaps[seededSnaps.length - 1].netWorth, Store.portfolio().netWorth, 0.01, 'latest snapshot matches current net worth');
+const snapToday = Store.recordSnapshot();
+ok(snapToday && snapToday.date === new Date().toISOString().slice(0, 10), 'recordSnapshot writes today');
+const countAfter = Store.snapshots().length;
+Store.recordSnapshot();
+ok(Store.snapshots().length === countAfter, 'recordSnapshot dedupes by date');
+const growth = Store.recentGrowth();
+ok(growth && growth.perMonthAbs > 0, 'recentGrowth positive on the growing seed');
+// goals
+const seedGoals = Store.goals();
+ok(seedGoals.length === 2, 'seed includes two goals');
+const g1 = Store.addGoal({ title: 'Test goal', targetAmount: Store.portfolio().netWorth * 2 });
+const pr = Store.goalProgress(g1);
+ok(pr.pct > 0.4 && pr.pct < 0.6, 'goal progress ≈ 50% at 2× target', `got ${pr.pct}`);
+ok(pr.projectedDate instanceof Date, 'projected achievement date derived from growth');
+const g2 = Store.addGoal({ title: 'Tiny goal', targetAmount: 1 });
+const newly = Store.checkGoalAchievements();
+ok(newly.some(g => g.id === g2.id), 'crossing a target marks the goal achieved');
+ok(Store.checkGoalAchievements().length === 0, 'achievement fires exactly once');
+Store.removeGoal(g1.id); Store.removeGoal(g2.id);
+
+// ---------- valuation-mode override (C3) ----------
+section('Valuation-mode override');
+const eq = Store.all().find(a => a.type === 'equity');
+const liveVal = Store.valuation(eq);
+ok(liveVal.mode === 'live', 'equity defaults to live');
+const manualVal = Store.valuation({ ...eq, valuationMode: 'manual', data: { ...eq.data, manualValue: 123456 } });
+ok(manualVal.mode === 'manual' && manualVal.grossValue === 123456, 'manual override freezes at the estimate');
+const compVal = Store.valuation({ ...eq, valuationMode: 'computed', data: { ...eq.data, assumedRate: 10 } });
+ok(compVal.mode === 'computed' && compVal.grossValue > (liveVal.invested || 0), 'computed override compounds cost basis');
+ok(compVal.dayChangePct == null, 'override drops the live day-change');
+
 // ---------- summary ----------
 console.log(`\n${'='.repeat(40)}\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

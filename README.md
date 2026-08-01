@@ -18,17 +18,23 @@ npm run build      # production bundle in dist/ (Vercel: SPA rewrite in vercel.j
 
 ## Screens & navigation
 
+Routing is HTML5 history routing (`/dashboard`, deep links and refreshes work on
+Vercel via the SPA rewrite in `vercel.json`; old `#/x` links redirect).
+
 | Route | Screen |
 |---|---|
-| `#/dashboard` | Net worth hero (assets − liabilities), rule-based insights with cited sources, allocation donut, 10-year net-worth outlook, asset-class cards, movers & best performers |
-| `#/holdings/:type` | 12 holdings tabs (Equity / MFs / ESOPs / Crypto / FDs / Small Savings / EPF / PPF / NPS / Gold / Real Estate / Others) with type-specific columns + footer totals |
-| `#/liabilities` | Loans & card balances — amortized outstanding, EMI split (P/I), payoff date, interest remaining, footer total |
-| `#/asset/:id` | Asset detail — value, growth (XIRR/CAGR/contract rate), mode-appropriate chart, vesting timeline for grants, statement-freshness panel, 10-year projection |
-| `#/add` → `#/add/:type` | Add flow — grouped type picker (Market-linked · Deposits & small savings · Retirement · Property & physical · Liabilities · Other), then a dynamic type-driven form |
-| `#/add-liability`, `#/edit-liability/:id` | Liability capture with live payoff/interest preview and asset linking (home loan ↔ property) |
-| `#/edit/:id` | Same form, pre-filled (revalue a property, update EPF from a statement, mark an FD matured) |
-| `#/projections/:years?/:mode?` | Whole-portfolio fan (1/3/5/10/20y), **net worth vs assets-only** toggle, per-asset table with the liability payoff row |
-| `#/settings` | Light/dark theme toggle + data-sources table (every feed with its Live/Computed/Manual tag) |
+| `/dashboard` | Net worth hero, **net-worth history chart** (3M/6M/1Y/All + delta chip), AI insights with cited sources, allocation donut, 10-year outlook, asset-class cards, goals module, movers & best performers, Share/Export |
+| `/holdings/:type` | 12 holdings tabs (Equity / MFs / ESOPs / Crypto / FDs / Small Savings / EPF / PPF / NPS / Gold / Real Estate / Others) with type-specific columns + footer totals |
+| `/liabilities` | Loans & card balances — amortized outstanding, EMI split (P/I), payoff date, interest remaining, footer total |
+| `/asset/:id` | Asset detail — value, growth (XIRR/CAGR/contract rate), **Live/Computed/Manual valuation-mode toggle**, mode-appropriate chart, vesting timeline for grants, 10-year projection |
+| `/add` → `/add/:type` | Add flow — grouped type picker, then a dynamic type-driven form |
+| `/add-liability`, `/edit-liability/:id` | Liability capture with live payoff/interest preview and asset linking (home loan ↔ property) |
+| `/edit/:id` | Same form, pre-filled (revalue a property, update EPF from a statement, mark an FD matured) |
+| `/projections/:years?/:mode?` | Whole-portfolio fan (1/3/5/10/20y), **net worth vs assets-only** toggle, per-asset table with the liability payoff row |
+| `/goals` | Net-worth goals — progress bars, projected achievement dates from your snapshot trend, one-time achievement alerts (toast + optional Web Notification) |
+| `/settings` | Light/dark theme toggle + data-sources table |
+| `/account` | Profile (display name, base currency), change password, CSV/PDF export, delete account |
+| `/login`, `/signup`, `/forgot`, `/reset` | Supabase email+password auth, plus a one-click read-only **demo** account |
 
 ## The three outputs every asset produces (spec §C)
 
@@ -76,22 +82,32 @@ net-worth view. Liabilities get a neutral "owed" treatment, not the P&L loss pal
 ## Code map
 
 ```
-index.html        app shell + sidebar navigation
-styles.css        design system (dark fintech theme, gold brand accent)
+index.html        app shell + sidebar navigation + OG/social meta
+styles.css        design system (dark fintech theme, gold brand accent, light theme)
+src/main.js       Vite module entry (imports the classic modules in order)
+js/router.js      HTML5 history router (+ legacy #/x redirect)
 js/market.js      mock market service — stocks, MF NAVs, coins, metal rates, FX,
                   deterministic simulated price histories (swap for real APIs)
 js/finance.js     FD compounding, CAGR, XIRR (Newton + bisection), lognormal
                   Monte Carlo bands, deterministic/contractual curves, ₹ formatting
-js/store.js       asset + liability model, per-type valuation dispatcher,
-                  amortization, projections, net-worth aggregation, demo seed
-js/insights.js    rule-based insights over assets + liabilities (cited sources,
-                  informational-not-advice framing)
-js/charts.js      dependency-free SVG charts — fan, line, donut, sparkline
+js/supabase.js    Supabase client from VITE_* env vars (local mode when unset)
+js/store.js       asset + liability + snapshot + goal model, valuation dispatcher
+                  (incl. per-asset mode override), amortization, projections,
+                  net-worth aggregation, demo seed, read-only demo flag
+js/cloud.js       Supabase ⇄ Store sync (load-all + write-through upserts)
+js/auth.js        session handling, login/signup/forgot/reset/account pages,
+                  demo banner, auth guard plumbing
+js/insights.js    rule-based insights over assets, liabilities, snapshots & goals
+js/charts.js      dependency-free SVG charts — fan, line, area (+hover), donut
 js/forms.js       dynamic type-driven add/edit forms, validation, smart derivation
-js/views.js       Dashboard / Holdings / Asset detail / Projections renderers
-js/app.js         hash router, add/edit flows, grouped type picker,
-                  theme toggle, modals, toasts, boot
-tests/run-tests.js unit tests for all financial math (node tests/run-tests.js)
+js/views.js       Dashboard / Holdings / Asset detail / Projections / Goals views
+js/export.js      CSV backup + one-page jsPDF portfolio snapshot (₹-capable font)
+js/pdf-font.js    embedded Noto Sans subset for the PDF (generated w/ fontTools)
+js/share.js       1200×630 redacted growth card (canvas) + Web Share API
+js/app.js         route handling, add/edit flows, goals/export/share modals,
+                  theme toggle, first-visit disclaimer, boot
+supabase/         SQL migration (schema + RLS + triggers), demo seed, setup guide
+tests/run-tests.js unit tests — financial math, snapshots, goals, mode override
 ```
 
 ## Tests
@@ -100,7 +116,8 @@ tests/run-tests.js unit tests for all financial math (node tests/run-tests.js)
 node tests/run-tests.js
 ```
 
-51 assertions cover FD compounding, XIRR, EPF/PPF/RD/annuity math, NPS blended μ/σ, loan
+66 assertions cover snapshots, goal progress/achievement, the valuation-mode
+override, and all the financial math: FD compounding, XIRR, EPF/PPF/RD/annuity math, NPS blended μ/σ, loan
 amortization (EMI, balance, payoff date, interest remaining, EMI split), RSU/option vesting and
 intrinsic value, small-savings maturity math, and net-worth-with-liabilities invariants
 (including the linked home-loan no-double-count rule).
