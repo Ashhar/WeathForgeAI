@@ -13,14 +13,19 @@ declare
   re_id   uuid := '22222222-2222-4222-8222-222222222222';
 begin
   -- ---------- auth user (idempotent) ----------
+  -- the empty-string token columns matter: GoTrue fails password logins
+  -- with "Database error querying schema" when they are NULL
   insert into auth.users (
     id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
-    raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+    raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+    confirmation_token, recovery_token, email_change_token_new, email_change,
+    email_change_token_current, phone_change, phone_change_token, reauthentication_token
   ) values (
     demo_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
     'demo@wealthforge.ai', crypt('wealthforge-demo', gen_salt('bf')), now(),
     '{"provider":"email","providers":["email"]}', '{"display_name":"Demo Investor"}',
-    now(), now()
+    now(), now(),
+    '', '', '', '', '', '', '', ''
   ) on conflict (id) do nothing;
 
   insert into auth.identities (
