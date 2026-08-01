@@ -13,5 +13,5 @@ jobs:
       - name: Ping Project
         run: |
           curl -f -L -I https://wealthforgeai.ashharnadeem.in/api/health
-          curl -f -L -I https://cloudforgeai.ashharnadeem.in/api/health
+          curl -f -L -I https://cloudforgeai.ashharnadeem.in
           curl -f -L -I https://ashharnadeem.in
