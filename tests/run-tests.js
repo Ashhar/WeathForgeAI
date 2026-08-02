@@ -21,12 +21,12 @@ const sandbox = {
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 
-for (const f of ['js/market.js', 'js/finance.js', 'js/store.js']) {
+for (const f of ['js/market.js', 'js/finance.js', 'js/store.js', 'js/import.js']) {
   vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), sandbox, { filename: f });
 }
 // const-declared IIFE globals live in the context's lexical scope, not on the
 // sandbox object — pull them out with an in-context expression
-const { Fin, Store, Market } = vm.runInContext('({ Fin, Store, Market })', sandbox);
+const { Fin, Store, Market, Importer } = vm.runInContext('({ Fin, Store, Market, Importer })', sandbox);
 
 let passed = 0, failed = 0;
 function ok(cond, name, detail) {
@@ -226,6 +226,56 @@ ok(manualVal.mode === 'manual' && manualVal.grossValue === 123456, 'manual overr
 const compVal = Store.valuation({ ...eq, valuationMode: 'computed', data: { ...eq.data, assumedRate: 10 } });
 ok(compVal.mode === 'computed' && compVal.grossValue > (liveVal.invested || 0), 'computed override compounds cost basis');
 ok(compVal.dayChangePct == null, 'override drops the live day-change');
+
+// ---------- bulk CSV import (P0-2) ----------
+section('Bulk CSV import');
+const fixture = name => fs.readFileSync(path.join(__dirname, 'fixtures', name), 'utf8');
+
+// CSV primitives
+ok(JSON.stringify(Importer.parseCsv('a,"b,1",c\n"d ""q""",e,f')) === JSON.stringify([['a', 'b,1', 'c'], ['d "q"', 'e', 'f']]),
+  'parseCsv handles quoted fields, embedded commas and escaped quotes');
+ok(Importer.normalizeDate('2023-01-05') === '2023-01-05', 'normalizeDate keeps ISO');
+ok(Importer.normalizeDate('05-01-2023') === '2023-01-05', 'normalizeDate reads DD-MM-YYYY as Indian order');
+ok(Importer.normalizeDate('5 Jan 2023') === '2023-01-05', 'normalizeDate reads month names');
+ok(Importer.normalizeDate('31-31-2023') === null && Importer.normalizeDate('2023-02-30') === null, 'normalizeDate rejects impossible dates');
+ok(Importer.parseNumber('₹2,450.50') === 2450.5, 'parseNumber strips ₹ and thousands separators');
+ok(Importer.parseNumber('abc') === null && Importer.parseNumber('') === null, 'parseNumber rejects non-numbers');
+
+// full-fixture imports: every asset class with an import entry point
+for (const [type, file, n] of [
+  ['equity', 'equity.csv', 3], ['mf', 'mf.csv', 3], ['crypto', 'crypto.csv', 2],
+  ['fd', 'fd.csv', 2], ['gold', 'gold.csv', 2], ['epf', 'epf.csv', 1],
+  ['ppf', 'ppf.csv', 1], ['nps', 'nps.csv', 1], ['smallsavings', 'smallsavings.csv', 2],
+  ['esop', 'esop.csv', 1],
+]) {
+  const r = Importer.importRows(type, fixture(file));
+  ok(r.assets.length === n && r.errors.length === 0, `${type} fixture imports ${n} row(s) cleanly`,
+    `got ${r.assets.length} assets, errors: ${JSON.stringify(r.errors)}`);
+  ok(r.assets.every(a2 => Store.valuation({ id: 'tmp', ...a2 }).currentValue > 0), `${type} imported rows produce a positive valuation`);
+}
+
+// spot-check mappings
+const eqImp = Importer.importRows('equity', fixture('equity.csv')).assets;
+ok(eqImp[0].data.avgPrice === 2450.5 && eqImp[0].data.totalInvested === 24505, 'equity import derives total from quoted formatted price');
+ok(eqImp[1].acquiredOn === '2023-02-05', 'equity import normalizes DD-MM-YYYY dates');
+const mfImp = Importer.importRows('mf', fixture('mf.csv')).assets;
+ok(mfImp[1].data.plan === 'Regular' && mfImp[2].data.option === 'IDCW', 'mf import keeps plan/option variants');
+const fdImp = Importer.importRows('fd', fixture('fd.csv')).assets;
+ok(fdImp[0].data.maturityDate === Fin.addYears('2023-04-01', 5).toISOString().slice(0, 10),
+  'fd import derives maturity from tenure exactly like the manual form');
+
+// row-level errors: bad rows reported with row number + reason, good rows kept
+const bad = Importer.importRows('equity', fixture('equity-malformed.csv'));
+ok(bad.assets.length === 1 && bad.errors.length === 3, 'malformed file: good rows import, bad rows error', JSON.stringify(bad));
+ok(bad.errors[0].row === 3 && /unknown symbol/i.test(bad.errors[0].message), 'unknown symbol reported with its row number');
+ok(bad.errors.some(e => /quantity/.test(e.message)) && bad.errors.some(e => /invalid date/.test(e.message)), 'each bad row gets a specific reason');
+
+// positional (headerless) rows and header validation
+const pos = Importer.importRows('equity', 'RELIANCE,10,2450.50,2023-01-05');
+ok(pos.assets.length === 1 && pos.assets[0].data.symbol === 'RELIANCE', 'headerless rows map positionally');
+const noReq = Importer.importRows('equity', 'symbol,avg_price\nRELIANCE,2450');
+ok(noReq.assets.length === 0 && /missing required/.test(noReq.errors[0].message), 'header missing required columns is a clear error');
+ok(Importer.importRows('equity', '').errors.length === 1, 'empty input reports an error instead of silence');
 
 // ---------- live market rates (P0-1) ----------
 section('Live market rates');

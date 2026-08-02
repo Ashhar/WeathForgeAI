@@ -132,9 +132,10 @@ const Forms = (() => {
       </div>
       <div id="lots_csv_box" style="display:none;margin-top:10px">
         <div class="field full">
-          <label>CSV rows — <code>date,quantity,price</code> (one per line, date as YYYY-MM-DD)</label>
+          <label>CSV rows — <code>date,quantity,price</code> (one per line; dates as YYYY-MM-DD or DD-MM-YYYY)</label>
           <textarea id="lots_csv" rows="4" placeholder="2023-01-05,10,2450.50&#10;2023-02-05,10,2512.00"></textarea>
-          <div class="hint">The fast path if you have a broker/CAS statement export.</div>
+          <div class="hint">The fast path if you have a broker/CAS statement export. Rows append to the table above.</div>
+          <div class="err" id="lots_csv_err" style="display:none" role="alert"></div>
         </div>
         <button type="button" class="btn sm" id="lots_csv_apply" style="margin-top:8px">Apply CSV</button>
       </div>`;
@@ -155,7 +156,9 @@ const Forms = (() => {
       if (onChange) onChange();
     });
     tbl.addEventListener('click', ev => {
-      if (ev.target.classList.contains('rm')) { ev.target.closest('tr').remove(); if (onChange) onChange(); }
+      // the ✕ button wraps its glyph in a span — resolve to the button
+      const rm = ev.target.closest('.rm');
+      if (rm) { rm.closest('tr').remove(); if (onChange) onChange(); }
     });
     tbl.addEventListener('input', () => { if (onChange) onChange(); });
     $('lots_csv_toggle').addEventListener('click', () => {
@@ -163,14 +166,36 @@ const Forms = (() => {
       b.style.display = b.style.display === 'none' ? '' : 'none';
     });
     $('lots_csv_apply').addEventListener('click', () => {
-      const lines = val('lots_csv').split('\n').map(l => l.trim()).filter(Boolean);
-      const lots = [];
-      for (const line of lines) {
-        const [date, qty, price] = line.split(',').map(x => x.trim());
-        if (date && qty && price && isFinite(+qty) && isFinite(+price)) lots.push({ date, qty: +qty, price: +price });
+      // proper CSV parse (quotes, ₹/comma-formatted numbers) with per-line
+      // errors — a bad line is reported, never silently dropped or mangled
+      const rows = Importer.parseCsv(val('lots_csv'));
+      const lots = [], errs = [];
+      rows.forEach((cells, i) => {
+        const [rawDate, rawQty, rawPrice] = cells;
+        if (i === 0 && /date/i.test(rawDate || '') && !Importer.normalizeDate(rawDate)) return; // header line
+        const date = Importer.normalizeDate(rawDate);
+        const qty = Importer.parseNumber(rawQty), price = Importer.parseNumber(rawPrice);
+        if (!date) { errs.push(`Line ${i + 1}: invalid date "${rawDate || ''}" — use YYYY-MM-DD or DD-MM-YYYY`); return; }
+        if (qty == null || qty <= 0) { errs.push(`Line ${i + 1}: invalid quantity "${rawQty || ''}"`); return; }
+        if (price == null) { errs.push(`Line ${i + 1}: invalid price "${rawPrice || ''}"`); return; }
+        lots.push({ date, qty, price });
+      });
+      const errEl = $('lots_csv_err');
+      if (errEl) {
+        if (!rows.length) { errEl.innerHTML = 'Nothing to apply — paste CSV rows first.'; errEl.style.display = ''; }
+        else if (errs.length) { errEl.innerHTML = errs.map(e => esc(e)).join('<br/>'); errEl.style.display = ''; }
+        else errEl.style.display = 'none';
       }
       if (lots.length) {
-        tbl.querySelector('tbody').innerHTML = lots.map((l, i) => lotRow(i, l)).join('');
+        // append to the table (never wipe manually entered lots); drop
+        // still-empty placeholder rows first
+        const tbody = tbl.querySelector('tbody');
+        tbody.querySelectorAll('tr').forEach(tr => {
+          const g = k => { const e = tr.querySelector(`[data-lot="${k}"]`); return e ? e.value.trim() : ''; };
+          if (!g('date') && !g('qty') && !g('price')) tr.remove();
+        });
+        tbody.insertAdjacentHTML('beforeend', lots.map((l, i) => lotRow(i, l)).join(''));
+        $('lots_csv').value = '';
         if (onChange) onChange();
       }
     });
@@ -294,7 +319,7 @@ const Forms = (() => {
         const lots = collectLots();
         return { errors, acquiredOn: date, data: {
           symbol, quantity, avgPrice, totalInvested,
-          lots: lots.length > 1 ? lots : undefined,
+          lots: lots.length ? lots : undefined,
           isin: val('f_isin') || undefined,
           dividends: num('f_dividends') || undefined,
           charges: num('f_charges') || undefined,
@@ -376,7 +401,7 @@ const Forms = (() => {
           schemeCode: code, plan: segVal('f_plan'), option: segVal('f_option'),
           units: u, avgNav: avgNav || (invested && u ? invested / u : undefined), totalInvested: invested,
           sipOngoing: checked('f_sip'), sipAmount: num('f_sipamt') || undefined, sipFreq: val('f_sipfreq') || undefined,
-          lots: lots.length > 1 ? lots : undefined,
+          lots: lots.length ? lots : undefined,
           folio: val('f_folio') || undefined,
         } };
       },
@@ -690,7 +715,7 @@ const Forms = (() => {
         const c = Market.getCoin(coinId);
         return { errors, acquiredOn: date, data: {
           coinId, quantity, avgPrice, totalInvested, investCurrency: segVal('f_ccy') || 'USD',
-          lots: lots.length > 1 ? lots : undefined,
+          lots: lots.length ? lots : undefined,
           wallet: val('f_wallet') || undefined, stakingYield: num('f_staking') || undefined,
           stable: c ? !!c.stable : undefined,
         } };
@@ -1173,7 +1198,7 @@ const Forms = (() => {
     wireSegs(container);
     spec.wire(a);
     container.querySelectorAll('[data-import]').forEach(b => b.addEventListener('click', () => {
-      UI.toast('Statement import is on the roadmap — use "Paste CSV" under lots for now.');
+      Importer.openModal(type);
     }));
   }
 
