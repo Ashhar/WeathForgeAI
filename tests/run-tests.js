@@ -227,6 +227,39 @@ const compVal = Store.valuation({ ...eq, valuationMode: 'computed', data: { ...e
 ok(compVal.mode === 'computed' && compVal.grossValue > (liveVal.invested || 0), 'computed override compounds cost basis');
 ok(compVal.dayChangePct == null, 'override drops the live day-change');
 
+// ---------- live market rates (P0-1) ----------
+section('Live market rates');
+ok(Market.rateInfo('gold').live === false, 'rates are simulated by default (no cloud client)');
+ok(Market.rateChip('gold') === '' && Market.rateNoteText('USDINR') === '', 'no freshness chip in simulated mode');
+ok(Market.METALS.gold.perGram > 0 && Market.FX.USDINR > 0, 'simulated fallback rates are present');
+
+// mock the cloud client: one fresh row, one stale row
+const freshTs = new Date(Date.now() - 5 * 60000).toISOString();
+const staleTs = new Date(Date.now() - 3 * 3600000).toISOString();
+sandbox.Supa = {
+  enabled: true,
+  client: { from: () => ({ select: async () => ({ data: [
+    { id: 'gold', rate: 10000, unit: 'INR_PER_GRAM', source: 'test-feed', fetched_at: freshTs },
+    { id: 'USDINR', rate: 90, unit: 'INR_PER_USD', source: 'test-feed', fetched_at: staleTs },
+    { id: 'bogus', rate: -1, unit: 'x', source: 'test-feed', fetched_at: freshTs },
+  ], error: null }) }) },
+};
+
+Market.loadLiveRates().then(applied => {
+  ok(applied === true, 'loadLiveRates applies market_rates rows');
+  ok(Market.METALS.gold.perGram === 10000, 'gold ₹/gram overridden by the live rate');
+  ok(Market.FX.USDINR === 90, 'USD/INR overridden by the live rate');
+  ok(Market.METALS.silver.perGram > 0, 'missing rows keep their fallback value');
+  const gInfo = Market.rateInfo('gold');
+  ok(gInfo.live === true && gInfo.stale === false, 'fresh rate reports live + not stale');
+  ok(Market.rateInfo('USDINR').stale === true, 'rate older than the threshold reports stale');
+  ok(Market.rateChip('USDINR').includes('last known rate'), 'stale rate renders the explicit last-known state');
+  ok(Market.rateNoteText('gold').includes('updated'), 'fresh rate renders an updated-ago note');
+  finish();
+});
+
 // ---------- summary ----------
-console.log(`\n${'='.repeat(40)}\n${passed} passed, ${failed} failed`);
-process.exit(failed ? 1 : 0);
+function finish() {
+  console.log(`\n${'='.repeat(40)}\n${passed} passed, ${failed} failed`);
+  process.exit(failed ? 1 : 0);
+}

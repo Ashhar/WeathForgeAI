@@ -531,7 +531,9 @@ const UI = (() => {
     initTheme();
     if (Auth.enabled()) {
       await Auth.init();
-      if (Auth.session) await Cloud.loadAll();
+      // live rates load alongside portfolio data so the first render
+      // (and its snapshot) already uses current gold/silver/FX
+      if (Auth.session) await Promise.all([Cloud.loadAll(), Market.loadLiveRates()]);
     } else {
       Store.load();
     }

@@ -265,7 +265,7 @@ const Forms = (() => {
           s => `<div><div class="ac-name">${s.symbol}</div><div class="ac-sub">${s.name} · ${s.exchange}</div></div><div class="ac-price">${s.currency === 'USD' ? '$' : '₹'}${s.price.toLocaleString('en-IN')}</div>`,
           (s, inp) => {
             inp.value = s.symbol; inp.dataset.key = s.symbol;
-            setHint('f_symbol', `${s.name} · ${s.exchange} · LTP ${s.currency === 'USD' ? '$' : '₹'}${s.price.toLocaleString('en-IN')}${s.currency === 'USD' ? ` (FX @ ₹${Market.FX.USDINR}/$)` : ''}`);
+            setHint('f_symbol', `${s.name} · ${s.exchange} · LTP ${s.currency === 'USD' ? '$' : '₹'}${s.price.toLocaleString('en-IN')}${s.currency === 'USD' ? ` (FX @ ₹${Market.FX.USDINR}/$${Market.rateNoteText('USDINR') ? ' · ' + Market.rateNoteText('USDINR') : ''})` : ''}`);
             setErr('f_symbol', null);
           });
         const derive = src => {
@@ -511,7 +511,7 @@ const Forms = (() => {
             ${dateF('f_date', 'Purchase date', { req: true, value: a.acquiredOn })}
             ${form === 'sgb' ? numF('f_sgbrate', 'SGB fixed interest (% p.a.)', { value: d.sgbRate != null ? d.sgbRate : 2.5, step: '0.1', hint: 'Paid on issue price, over metal appreciation.' }) : ''}
             ${form === 'sgb' ? dateF('f_sgbmat', 'SGB maturity date (8 years)', { value: d.sgbMaturity }) : ''}
-            ${m && !isUnits ? `<div class="form-note full">Current ${metal} rate: <b>₹${m.perGram.toLocaleString('en-IN')}/g</b> (${m.label}).</div>` : ''}
+            ${m && !isUnits ? `<div class="form-note full">Current ${metal} rate: <b>₹${m.perGram.toLocaleString('en-IN', { maximumFractionDigits: 2 })}/g</b> (${m.label}). ${Market.rateChip(metal)}</div>` : ''}
           </div>`;
           $('gold_adv').innerHTML = form === 'physical' ? `
             <details class="expander"><summary>Add more details — making charges, storage</summary><div class="expander-body"><div class="form-grid">
@@ -641,7 +641,7 @@ const Forms = (() => {
         <div class="form-grid">
           ${acF('f_coin', 'Coin / token', { req: true, placeholder: 'Search BTC, ETH, SOL…', value: d.coinId || '', key: d.coinId || '', full: true, hint: d.coinId ? 'Live price linked ✓' : 'Pick from search — drives the live price.' })}
           ${numF('f_qty', 'Quantity held', { req: true, value: d.quantity, step: 'any', hint: 'Fractional quantities to 8 decimals are fine.' })}
-          ${seg('f_ccy', 'Purchase currency', [['USD', 'USD'], ['INR', 'INR']], d.investCurrency || 'USD', { hint: `Values convert to ₹ at ${Market.FX.USDINR}/$ (FX note).` })}
+          ${seg('f_ccy', 'Purchase currency', [['USD', 'USD'], ['INR', 'INR']], d.investCurrency || 'USD', { hint: `Values convert to ₹ at ${Market.FX.USDINR}/$ (FX note). ${Market.rateChip('USDINR')}` })}
           ${dateF('f_date', 'First-buy date', { req: true, value: a.acquiredOn })}
           ${numF('f_avg', 'Average buy price (per coin)', { value: d.avgPrice, hint: 'In the purchase currency. Or enter total invested.' })}
           ${numF('f_total', 'Total invested', { value: d.totalInvested })}
@@ -663,7 +663,7 @@ const Forms = (() => {
           c => `<div><div class="ac-name">${c.id}</div><div class="ac-sub">${c.name}${c.stable ? ' · stablecoin' : ''}</div></div><div class="ac-price">$${c.priceUSD.toLocaleString('en-US')}</div>`,
           (c, inp) => {
             inp.value = c.id; inp.dataset.key = c.id;
-            setHint('f_coin', `${c.name} · $${c.priceUSD.toLocaleString('en-US')} · ≈ ${Fin.fmtINR(c.priceUSD * Market.FX.USDINR)} (FX @ ₹${Market.FX.USDINR}/$)${c.stable ? ' · stablecoin, projects ≈ flat' : ''}`);
+            setHint('f_coin', `${c.name} · $${c.priceUSD.toLocaleString('en-US')} · ≈ ${Fin.fmtINR(c.priceUSD * Market.FX.USDINR)} (FX @ ₹${Market.FX.USDINR}/$${Market.rateNoteText('USDINR') ? ' · ' + Market.rateNoteText('USDINR') : ''})${c.stable ? ' · stablecoin, projects ≈ flat' : ''}`);
             setErr('f_coin', null);
           });
         const derive = src => {
@@ -1030,7 +1030,7 @@ const Forms = (() => {
           <div class="form-section-title">Pricing</div>
           ${numF('f_strike', 'Strike price (options only)', { value: d.strike, hint: 'Leave blank for RSUs.' })}
           ${numF('f_shareprice', 'Current share price (private / unlisted)', { value: d.sharePrice, hint: 'Use the 409A / last-round valuation. Ignored when a ticker is linked.' })}
-          ${seg('f_ccy', 'Currency', [['USD', 'USD'], ['INR', 'INR']], d.currency || 'USD', { hint: `USD converts at ₹${Market.FX.USDINR}/$.` })}
+          ${seg('f_ccy', 'Currency', [['USD', 'USD'], ['INR', 'INR']], d.currency || 'USD', { hint: `USD converts at ₹${Market.FX.USDINR}/$. ${Market.rateChip('USDINR')}` })}
           ${check('f_private', 'Private / unlisted company', d.isPrivate, 'Valued manually; tagged illiquid & assumption-based.')}
           ${numF('f_growth', 'Assumed growth if private (% p.a.)', { value: d.assumedGrowth != null ? d.assumedGrowth : 15, step: '0.5' })}
         </div>

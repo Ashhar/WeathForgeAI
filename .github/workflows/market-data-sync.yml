@@ -1,0 +1,24 @@
+name: Market data sync
+
+# Refresh gold/silver spot (₹/gram) and USD/INR into public.market_rates.
+# Metals target 15–30 min, FX at least hourly — one 20-minute cadence covers both.
+# Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, optional METALS_API_KEY.
+on:
+  schedule:
+    - cron: "*/20 * * * *"
+  workflow_dispatch:
+
+jobs:
+  sync-rates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Sync gold/silver/FX rates
+        run: node scripts/sync-rates.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          METALS_API_KEY: ${{ secrets.METALS_API_KEY }}
