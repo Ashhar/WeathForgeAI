@@ -1,8 +1,11 @@
 /* ============================================================
-   WealthForge AI — mock market data service
-   Deterministic simulated prices/NAVs/rates so the app behaves
-   like it has a live feed without a network dependency.
-   Swap `Market` internals for real APIs later.
+   WealthForge AI — market data service
+   Gold/silver spot and USD/INR are live in cloud mode: a scheduled
+   job (scripts/sync-rates.mjs) writes them to public.market_rates
+   with a fetched_at timestamp, and loadLiveRates() applies them at
+   boot. Everything else (equity LTP, MF NAV, crypto) is still a
+   deterministic simulation so the app works fully offline; in
+   local mode the metals/FX rates fall back to simulated values.
    ============================================================ */
 
 const Market = (() => {
@@ -141,6 +144,75 @@ const Market = (() => {
   function purityFactor(p) { return PURITY[p] != null ? PURITY[p] : 1; }
   function getGoldUnit(id) { return GOLD_UNITS.find(g => g.id === id) || null; }
 
+  // ---------- live rates (cloud mode) ----------
+  // public.market_rates rows: gold/silver (₹/gram) + USDINR, written by the
+  // scheduled sync job. Freshness metadata backs the "updated X ago" /
+  // "showing last known rate" UI so stale data is never presented as current.
+  const RATE_STALE_MS = 2 * 60 * 60 * 1000; // several missed 20-min syncs
+  const RATE_META = {}; // id → { live, fetchedAt (Date), source }
+
+  async function loadLiveRates() {
+    const supa = typeof globalThis !== 'undefined' ? globalThis.Supa : null;
+    if (!supa || !supa.client) return false; // local mode: simulated rates
+    try {
+      const { data, error } = await supa.client
+        .from('market_rates').select('id,rate,unit,source,fetched_at');
+      if (error) throw error;
+      for (const row of data || []) {
+        const rate = Number(row.rate);
+        if (!(rate > 0)) continue;
+        if (row.id === 'gold') METALS.gold.perGram = rate;
+        else if (row.id === 'silver') METALS.silver.perGram = rate;
+        else if (row.id === 'USDINR') FX.USDINR = rate;
+        else continue;
+        RATE_META[row.id] = { live: true, fetchedAt: new Date(row.fetched_at), source: row.source || 'live feed' };
+      }
+      return Object.keys(RATE_META).length > 0;
+    } catch (e) {
+      console.error('Market.loadLiveRates failed — keeping simulated rates', e);
+      return false;
+    }
+  }
+
+  // { live, stale, fetchedAt, source } — simulated rates are live:false
+  function rateInfo(id) {
+    const meta = RATE_META[id];
+    if (!meta) return { live: false, stale: false, fetchedAt: null, source: 'simulated' };
+    const stale = Date.now() - meta.fetchedAt.getTime() > RATE_STALE_MS;
+    return { live: true, stale, fetchedAt: meta.fetchedAt, source: meta.source };
+  }
+
+  function rateAgeText(fetchedAt) {
+    const mins = Math.max(0, Math.round((Date.now() - fetchedAt.getTime()) / 60000));
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins} min ago`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 48) return `${hrs} h ago`;
+    return `${Math.round(hrs / 24)} days ago`;
+  }
+
+  // Plain-text freshness note (for textContent hints); '' in simulated mode.
+  function rateNoteText(id) {
+    const info = rateInfo(id);
+    if (!info.live) return '';
+    if (info.stale) {
+      const ts = info.fetchedAt.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      return `⚠ showing last known rate from ${ts}`;
+    }
+    return `updated ${rateAgeText(info.fetchedAt)}`;
+  }
+
+  // Small freshness chip for any live rate; '' in simulated/local mode.
+  function rateChip(id) {
+    const info = rateInfo(id);
+    if (!info.live) return '';
+    if (info.stale) {
+      const ts = info.fetchedAt.toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      return `<span class="chip stale" title="Live feed unreachable — value is not current">⚠️ showing last known rate from ${ts}</span>`;
+    }
+    return `<span class="chip fresh" title="Source: ${String(info.source).replace(/"/g, '&quot;')}">🕐 updated ${rateAgeText(info.fetchedAt)}</span>`;
+  }
+
   return {
     FX, PURITY, GOLD_UNITS, METALS,
     searchStocks, getStock,
@@ -148,6 +220,7 @@ const Market = (() => {
     searchCoins, getCoin,
     metalRate, purityFactor, getGoldUnit,
     dayChangePct, priceHistory,
+    loadLiveRates, rateInfo, rateChip, rateNoteText,
   };
 })();
 

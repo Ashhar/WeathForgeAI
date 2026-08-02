@@ -490,7 +490,7 @@ const Views = (() => {
     add('Acquired', fmtDate(a.acquiredOn));
     add('Holding period', v.years < 1 ? `${Math.round(v.years * 12)} months` : `${v.years.toFixed(1)} years`);
     add('Ownership', a.ownership === 'joint' ? `Joint — your share ${a.sharePct}%` : 'Single');
-    if (v.fx) add('FX', `Priced in ${v.fx.currency}, converted @ ₹${v.fx.rate}/$`);
+    if (v.fx) add('FX', `Priced in ${v.fx.currency}, converted @ ₹${v.fx.rate}/$ ${Market.rateChip('USDINR')}`);
     if (a.type === 'equity') { add('Symbol', esc(d.symbol)); add('Quantity', fmtQty(d.quantity)); add('Avg buy price', fmtINR(d.avgPrice, { decimals: 1 })); if (d.dividends) add('Dividends received', fmtINR(d.dividends)); if (d.isin) add('ISIN', esc(d.isin)); }
     if (a.type === 'mf') { const s = Market.getScheme(d.schemeCode); add('Scheme', esc(s ? s.name : d.schemeCode)); add('Plan / option', `${esc(d.plan)} · ${esc(d.option)}`); add('Units', fmtQty(d.units, 3)); add('Avg cost NAV', fmtINR(d.avgNav, { decimals: 1 })); if (d.sipOngoing) add('SIP', `${fmtINR(d.sipAmount)} / ${d.sipFreq || 'monthly'} (ongoing)`); if (d.folio) add('Folio', esc(d.folio)); }
     if (a.type === 'esop') { add('Company', esc(d.company)); if (d.ticker) add('Ticker', esc(d.ticker)); add('Grant type', esc(d.grantType)); if (d.strike != null) { add('Strike', `${d.currency === 'USD' ? '$' : '₹'}${fmtQty(d.strike, 2)}`); add('Intrinsic / unit', fmtINR(x.perUnit, { decimals: 1 })); } add('Share price', fmtINR(x.price, { decimals: 1 })); if (d.isPrivate) add('Liquidity', '<span class="tag manual"><span class="dot"></span>Illiquid · assumption-based</span>'); if (d.exitNote) add('Exit assumption', esc(d.exitNote)); }
@@ -512,6 +512,9 @@ const Views = (() => {
     if (a.type === 'nps') { add('Corpus', `${fmtINR(d.corpus)} ${freshChip('as of ' + fmtDate(d.asOfDate))}`); add('Tier', esc(d.tier || 'I')); add('Allocation', `E ${d.allocE}% · C ${d.allocC}% · G ${d.allocG}%`); if (x.blend) add('Blended μ / σ', `${(x.blend.mu * 100).toFixed(1)}% / ${(x.blend.sigma * 100).toFixed(1)}%`); add('Monthly contribution', fmtINR(d.monthlyContribution)); if (d.pran) add('PRAN', esc(d.pran)); }
     if (a.type === 'gold') {
       add('Form', esc((d.form || '').toUpperCase()));
+      const spotMetal = d.metal || 'gold';
+      const spot = Market.metalRate(spotMetal);
+      if (spot && d.form !== 'etf' && d.form !== 'sgb') add('Spot rate', `₹${spot.perGram.toLocaleString('en-IN', { maximumFractionDigits: 2 })}/g (${esc(spot.label)}) ${Market.rateChip(spotMetal)}`);
       if (d.grams) { add('Weight', `${fmtQty(d.grams, 2)} g`); add('Purity', esc(d.purity)); }
       if (d.units) add('Units', fmtQty(d.units, 3));
       if (d.makingCharges) add('Making charges', `${fmtINR(d.makingCharges)} (non-recoverable)`);
@@ -699,13 +702,17 @@ const Views = (() => {
 
   // ============ SETTINGS / DATA SOURCES ============
   function settings() {
+    // live-rate feeds report their real freshness (or an explicit stale state)
+    const fxInfo = Market.rateInfo('USDINR');
+    const metalInfo = Market.rateInfo('gold');
     const SOURCES = [
       { name: 'Equity LTP (NSE/BSE)', mode: 'live', src: 'Simulated feed — swap for an exchange/broker API', fresh: 'per session' },
       { name: 'Mutual fund NAV', mode: 'live', src: 'Simulated — swap for AMFI daily NAV', fresh: 'per session' },
       { name: 'RSU / ESOP share price', mode: 'live', src: 'Listed: ticker feed · Private: your 409A/last-round value', fresh: 'listed live · private manual' },
       { name: 'NPS', mode: 'live', src: 'E/C/G blend from your allocation; corpus from your CRA statement', fresh: 'statement date' },
-      { name: 'Crypto prices + USD/INR FX', mode: 'live', src: 'Simulated — swap for an exchange API', fresh: 'per session' },
-      { name: 'Gold / silver spot', mode: 'live', src: 'Simulated per-gram rate (24K/999 basis)', fresh: 'per session' },
+      { name: 'Crypto prices (USD)', mode: 'live', src: 'Simulated — swap for an exchange API', fresh: 'per session' },
+      { name: 'USD/INR FX', mode: 'live', src: fxInfo.live ? `Live — ${fxInfo.source}, synced every 20 min` : 'Simulated — enable cloud mode for the live feed', fresh: fxInfo.live ? Market.rateNoteText('USDINR') : 'per session' },
+      { name: 'Gold / silver spot', mode: 'live', src: metalInfo.live ? `Live — ${metalInfo.source}, ₹/gram 24K/999, synced every 20 min` : 'Simulated per-gram rate (24K/999 basis)', fresh: metalInfo.live ? Market.rateNoteText('gold') : 'per session' },
       { name: 'Fixed deposits & small savings', mode: 'computed', src: 'Your entered contract terms — rate, tenure, compounding', fresh: 'contract' },
       { name: 'EPF / PF', mode: 'computed', src: 'Manual statement balance + statutory rate', fresh: 'your last statement' },
       { name: 'PPF', mode: 'computed', src: 'Passbook balance + government rate', fresh: 'your last statement' },

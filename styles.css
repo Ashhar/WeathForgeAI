@@ -562,6 +562,8 @@ tr.tfoot td {
 
 /* freshness chip */
 .chip.fresh { background: var(--manual-bg); color: var(--manual); border-color: transparent; }
+/* live rate whose feed stopped updating — never presented as current */
+.chip.stale { background: var(--neg-bg); color: var(--neg); border-color: transparent; }
 
 /* ---------- vesting timeline ---------- */
 .vest-bar {
