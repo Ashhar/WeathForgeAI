@@ -10,7 +10,7 @@
     "test": "node tests/run-tests.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.0",
+    "@google/generative-ai": "^0.21.0",
     "@supabase/cli": "^1.0.0",
     "@supabase/supabase-js": "^2.45.0",
     "jspdf": "^4.2.1",

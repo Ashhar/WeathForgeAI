@@ -10,13 +10,13 @@
    MANDATORY review/confirm: nothing commits without explicit
    user approval of the preview table.
 
-   Dependencies: pdfjs-dist (PDF text extraction), @anthropic-ai/sdk
-   Env: VITE_ANTHROPIC_API_KEY
+   Dependencies: pdfjs-dist (PDF text extraction), @google/generative-ai
+   Env: VITE_GEMINI_API_KEY
    ============================================================ */
 
 const AIImport = (() => {
-  const API_KEY = import.meta.env?.VITE_ANTHROPIC_API_KEY || '';
-  const MODEL = 'claude-3-5-sonnet-20241022';
+  const API_KEY = import.meta.env?.VITE_GEMINI_API_KEY || '';
+  const MODEL = 'gemini-1.5-flash';
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
@@ -103,7 +103,7 @@ const AIImport = (() => {
     required: ['holdings'],
   };
 
-  const EXTRACTION_SYSTEM_PROMPT = `You are a financial data extraction assistant. Extract mutual fund holdings from CAS (Consolidated Account Statement) text.
+  const EXTRACTION_USER_PROMPT = `You are a financial data extraction assistant. Extract mutual fund holdings from CAS (Consolidated Account Statement) text.
 
 Output ONLY valid JSON matching this schema:
 ${JSON.stringify(EXTRACTION_SCHEMA, null, 2)}
@@ -120,33 +120,31 @@ Rules:
 - Do NOT invent data — use null for missing fields
 - Output MUST be valid JSON only, no explanatory text`;
 
-  // ---- Call Anthropic API ----
+  // ---- Call Gemini API ----
   async function extractViaLLM(text) {
     if (!API_KEY) {
-      throw new Error('VITE_ANTHROPIC_API_KEY not configured — set it in .env to enable AI import');
+      throw new Error('VITE_GEMINI_API_KEY not configured — set it in .env to enable AI import');
     }
 
-    const Anthropic = (await import('@anthropic-ai/sdk')).default;
-    const client = new Anthropic({ apiKey: API_KEY, dangerouslyAllowBrowser: true });
+    const { GoogleGenerativeAI } = await import('@google/generative-ai');
+    const genAI = new GoogleGenerativeAI(API_KEY);
+    const model = genAI.getGenerativeModel({
+      model: MODEL,
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 4096,
+      },
+    });
 
     try {
-      const response = await client.messages.create({
-        model: MODEL,
-        max_tokens: 4096,
-        system: EXTRACTION_SYSTEM_PROMPT,
-        messages: [{
-          role: 'user',
-          content: `Extract mutual fund holdings from this CAS excerpt:\n\n${text.slice(0, 50000)}`, // Cap at ~50k chars per chunk
-        }],
-      });
+      const prompt = `${EXTRACTION_USER_PROMPT}\n\nExtract mutual fund holdings from this CAS excerpt:\n\n${text.slice(0, 50000)}`; // Cap at ~50k chars per chunk
 
-      const content = response.content[0];
-      if (content.type !== 'text') {
-        throw new Error('Unexpected response type from LLM');
-      }
+      const result = await model.generateContent(prompt);
+      const response = result.response;
+      const responseText = response.text();
 
       // Parse JSON from response
-      const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         throw new Error('LLM did not return valid JSON');
       }
@@ -158,14 +156,17 @@ Rules:
         throw new Error('LLM response missing holdings array');
       }
 
+      // Estimate tokens (Gemini doesn't provide exact counts in the basic API)
+      const estimatedTokens = Math.ceil(prompt.length / 4) + Math.ceil(responseText.length / 4);
+
       return {
         data: parsed,
         model: MODEL,
-        tokens: response.usage.input_tokens + response.usage.output_tokens,
+        tokens: estimatedTokens,
       };
     } catch (err) {
-      if (err.status === 401) {
-        throw new Error('Invalid Anthropic API key — check VITE_ANTHROPIC_API_KEY in .env');
+      if (err.message?.includes('API key') || err.message?.includes('401')) {
+        throw new Error('Invalid Gemini API key — check VITE_GEMINI_API_KEY in .env');
       }
       throw err;
     }
@@ -470,7 +471,7 @@ Rules:
   // ---- Public API: open upload modal ----
   function openUploadModal() {
     if (!API_KEY) {
-      UI.toast('AI import requires Anthropic API key — set VITE_ANTHROPIC_API_KEY in .env');
+      UI.toast('AI import requires Gemini API key — set VITE_GEMINI_API_KEY in .env');
       return;
     }
 

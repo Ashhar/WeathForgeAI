@@ -62,7 +62,7 @@ Visit: https://wealthforgeai.ashharnadeem.in
 1. Deployment → View Build Logs
 2. Look for npm install or build errors
 3. Common issues:
-   - Missing `@anthropic-ai/sdk` or `pdfjs-dist`
+   - Missing `@google/generative-ai` or `pdfjs-dist`
    - Out of memory during build
    - Build timeout
 
@@ -89,7 +89,7 @@ Set these in Vercel dashboard (Settings → Environment Variables):
 ```bash
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
-VITE_ANTHROPIC_API_KEY=your-anthropic-api-key
+VITE_GEMINI_API_KEY=your-gemini-api-key
 ```
 
 Without these, the app runs in local mode (localStorage only, no AI import).
