@@ -16,12 +16,78 @@
 
 const AIImport = (() => {
   const API_KEY = import.meta.env?.VITE_GEMINI_API_KEY || '';
-  // Try different model name formats - Gemini API can be particular about naming
-  const MODELS = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-pro'];
-  const MODEL = MODELS[0]; // Primary model to try
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
+  // Cache for discovered models
+  let availableModels = null;
+  let selectedModel = null;
+
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+
+  // ---- Discover available models dynamically ----
+  async function discoverModel() {
+    if (selectedModel) return selectedModel; // Use cached model
+
+    if (!API_KEY) {
+      throw new Error('VITE_GEMINI_API_KEY not configured');
+    }
+
+    try {
+      // Call the list models API
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${API_KEY}`,
+        { method: 'GET' }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Model discovery failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      availableModels = data.models || [];
+
+      // Prioritize models that support generateContent
+      const suitableModels = availableModels.filter(m =>
+        m.supportedGenerationMethods?.includes('generateContent')
+      );
+
+      if (suitableModels.length === 0) {
+        throw new Error('No suitable models found for generateContent');
+      }
+
+      // Prefer latest flash models, then pro, then any available
+      const modelPreferences = [
+        /gemini.*flash.*latest/i,
+        /gemini.*flash/i,
+        /gemini.*pro.*latest/i,
+        /gemini.*pro/i,
+        /gemini/i,
+      ];
+
+      for (const pattern of modelPreferences) {
+        const found = suitableModels.find(m => pattern.test(m.name));
+        if (found) {
+          // Extract model name (remove "models/" prefix)
+          selectedModel = found.name.replace('models/', '');
+          console.log('[AI Import] Using model:', selectedModel);
+          return selectedModel;
+        }
+      }
+
+      // Fallback to first available model
+      selectedModel = suitableModels[0].name.replace('models/', '');
+      console.log('[AI Import] Using fallback model:', selectedModel);
+      return selectedModel;
+
+    } catch (err) {
+      console.error('[AI Import] Model discovery failed:', err);
+      // Fallback to hardcoded models as last resort
+      const fallbacks = ['gemini-2.0-flash-exp', 'gemini-1.5-flash', 'gemini-pro'];
+      console.warn('[AI Import] Using fallback model list:', fallbacks);
+      selectedModel = fallbacks[0];
+      return selectedModel;
+    }
+  }
 
   // ---- PDF text extraction via pdfjs-dist ----
   async function extractTextFromPDF(arrayBuffer) {
@@ -128,64 +194,54 @@ Rules:
       throw new Error('VITE_GEMINI_API_KEY not configured — set it in .env to enable AI import');
     }
 
+    // Discover the best available model
+    const modelName = await discoverModel();
+
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
     const genAI = new GoogleGenerativeAI(API_KEY);
 
-    // Try multiple model names until one works
-    let lastError = null;
-    for (const modelName of MODELS) {
-      try {
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 4096,
-          },
-        });
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 4096,
+        },
+      });
 
-        const prompt = `${EXTRACTION_USER_PROMPT}\n\nExtract mutual fund holdings from this CAS excerpt:\n\n${text.slice(0, 50000)}`; // Cap at ~50k chars per chunk
+      const prompt = `${EXTRACTION_USER_PROMPT}\n\nExtract mutual fund holdings from this CAS excerpt:\n\n${text.slice(0, 50000)}`; // Cap at ~50k chars per chunk
 
-        const result = await model.generateContent(prompt);
-        const response = result.response;
-        const responseText = response.text();
+      const result = await model.generateContent(prompt);
+      const response = result.response;
+      const responseText = response.text();
 
-        // Parse JSON from response
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-          throw new Error('LLM did not return valid JSON');
-        }
-
-        const parsed = JSON.parse(jsonMatch[0]);
-
-        // Validate against schema (basic check)
-        if (!parsed.holdings || !Array.isArray(parsed.holdings)) {
-          throw new Error('LLM response missing holdings array');
-        }
-
-        // Estimate tokens (Gemini doesn't provide exact counts in the basic API)
-        const estimatedTokens = Math.ceil(prompt.length / 4) + Math.ceil(responseText.length / 4);
-
-        return {
-          data: parsed,
-          model: modelName,
-          tokens: estimatedTokens,
-        };
-      } catch (err) {
-        lastError = err;
-        // If model not supported, try next one
-        if (err.message?.includes('models/') || err.message?.includes('not found') || err.message?.includes('not supported')) {
-          continue;
-        }
-        // Other errors should be thrown immediately
-        break;
+      // Parse JSON from response
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('LLM did not return valid JSON');
       }
-    }
 
-    // All models failed
-    if (lastError?.message?.includes('API key') || lastError?.message?.includes('401')) {
-      throw new Error('Invalid Gemini API key — check VITE_GEMINI_API_KEY in .env');
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      // Validate against schema (basic check)
+      if (!parsed.holdings || !Array.isArray(parsed.holdings)) {
+        throw new Error('LLM response missing holdings array');
+      }
+
+      // Estimate tokens (Gemini doesn't provide exact counts in the basic API)
+      const estimatedTokens = Math.ceil(prompt.length / 4) + Math.ceil(responseText.length / 4);
+
+      return {
+        data: parsed,
+        model: modelName,
+        tokens: estimatedTokens,
+      };
+    } catch (err) {
+      if (err.message?.includes('API key') || err.message?.includes('401')) {
+        throw new Error('Invalid Gemini API key — check VITE_GEMINI_API_KEY in .env');
+      }
+      throw new Error(`Gemini API error with model ${modelName}: ${err.message}`);
     }
-    throw new Error(`Gemini API error: ${lastError?.message || 'Unknown error'}. Tried models: ${MODELS.join(', ')}`);
   }
 
   // ---- Match against mf_master and equity_master ----
@@ -381,63 +437,53 @@ Output MUST be valid JSON only, no explanatory text.`;
       throw new Error('VITE_GEMINI_API_KEY not configured — set it in .env to enable AI import');
     }
 
+    // Discover the best available model
+    const modelName = await discoverModel();
+
     const { GoogleGenerativeAI } = await import('@google/generative-ai');
     const genAI = new GoogleGenerativeAI(API_KEY);
 
-    // Try multiple model names until one works
-    let lastError = null;
-    for (const modelName of MODELS) {
-      try {
-        const model = genAI.getGenerativeModel({
-          model: modelName,
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 8192,
-          },
-        });
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 8192,
+        },
+      });
 
-        const prompt = `${CSV_EXTRACTION_PROMPT}\n\nCSV content:\n\n${text.slice(0, 100000)}`; // Cap at 100k chars
+      const prompt = `${CSV_EXTRACTION_PROMPT}\n\nCSV content:\n\n${text.slice(0, 100000)}`; // Cap at 100k chars
 
-        const result = await model.generateContent(prompt);
-        const response = result.response;
-        const responseText = response.text();
+      const result = await model.generateContent(prompt);
+      const response = result.response;
+      const responseText = response.text();
 
-        // Parse JSON from response
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-          throw new Error('AI did not return valid JSON — try a different CSV format');
-        }
-
-        const parsed = JSON.parse(jsonMatch[0]);
-
-        // Validate against schema
-        if (!parsed.asset_type || !parsed.holdings || !Array.isArray(parsed.holdings)) {
-          throw new Error('AI response missing required fields (asset_type or holdings)');
-        }
-
-        const estimatedTokens = Math.ceil(prompt.length / 4) + Math.ceil(responseText.length / 4);
-
-        return {
-          data: parsed,
-          model: modelName,
-          tokens: estimatedTokens,
-        };
-      } catch (err) {
-        lastError = err;
-        // If model not supported, try next one
-        if (err.message?.includes('models/') || err.message?.includes('not found') || err.message?.includes('not supported')) {
-          continue;
-        }
-        // Other errors should be thrown immediately
-        break;
+      // Parse JSON from response
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('AI did not return valid JSON — try a different CSV format');
       }
-    }
 
-    // All models failed
-    if (lastError?.message?.includes('API key') || lastError?.message?.includes('401')) {
-      throw new Error('Invalid Gemini API key — check VITE_GEMINI_API_KEY in .env');
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      // Validate against schema
+      if (!parsed.asset_type || !parsed.holdings || !Array.isArray(parsed.holdings)) {
+        throw new Error('AI response missing required fields (asset_type or holdings)');
+      }
+
+      const estimatedTokens = Math.ceil(prompt.length / 4) + Math.ceil(responseText.length / 4);
+
+      return {
+        data: parsed,
+        model: modelName,
+        tokens: estimatedTokens,
+      };
+    } catch (err) {
+      if (err.message?.includes('API key') || err.message?.includes('401')) {
+        throw new Error('Invalid Gemini API key — check VITE_GEMINI_API_KEY in .env');
+      }
+      throw new Error(`Gemini API error with model ${modelName}: ${err.message}`);
     }
-    throw new Error(`Gemini API error: ${lastError?.message || 'Unknown error'}. Tried models: ${MODELS.join(', ')}`);
   }
 
   // ---- Process file ----
