@@ -1,0 +1,6 @@
+{
+  "version": "2.0.0-p0p1",
+  "features": ["P0-1: live rates", "P0-2: bulk import", "P0-3: security masters", "P1-1: AI import"],
+  "build_time": "2026-08-03T12:20:00Z",
+  "commit": "latest with AI import"
+}
