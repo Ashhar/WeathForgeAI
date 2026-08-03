@@ -172,65 +172,98 @@ Rules:
     }
   }
 
-  // ---- Match against mf_master ----
+  // ---- Match against mf_master and equity_master ----
   async function matchHoldings(extractedHoldings) {
     const supa = globalThis.Supa?.client;
-    if (!supa) {
-      // Local mode: use built-in matching
-      return extractedHoldings.map(h => ({
-        ...h,
-        matched_scheme: matchLocalScheme(h),
-        confidence: h.scheme_code ? 'high' : 'medium',
-      }));
-    }
 
-    // Cloud mode: match against mf_master
     const matched = [];
     for (const holding of extractedHoldings) {
-      let match = null;
+      let matchedScheme = null;
+      let matchedStock = null;
       let confidence = 'low';
 
-      // Priority 1: ISIN
-      if (holding.isin) {
-        const { data } = await supa.from('mf_master')
-          .select('scheme_code,name,amc,plan,option,isin,nav,nav_date')
-          .eq('isin', holding.isin)
-          .limit(1)
-          .single();
-        if (data) {
-          match = data;
-          confidence = 'high';
-        }
-      }
+      // Determine if this is equity or MF based on fields
+      const isMF = holding.scheme_name || holding.scheme_code || holding.units != null;
+      const isEquity = holding.symbol || holding.quantity != null;
 
-      // Priority 2: scheme code
-      if (!match && holding.scheme_code) {
-        const { data } = await supa.from('mf_master')
-          .select('scheme_code,name,amc,plan,option,isin,nav,nav_date')
-          .eq('scheme_code', holding.scheme_code)
-          .limit(1)
-          .single();
-        if (data) {
-          match = data;
-          confidence = 'high';
-        }
-      }
+      if (isMF) {
+        // Match mutual fund
+        if (!supa) {
+          // Local mode
+          matchedScheme = matchLocalScheme(holding);
+          confidence = holding.scheme_code ? 'high' : 'medium';
+        } else {
+          // Cloud mode: match against mf_master
+          // Priority 1: ISIN
+          if (holding.isin) {
+            const { data } = await supa.from('mf_master')
+              .select('scheme_code,name,amc,plan,option,isin,nav,nav_date')
+              .eq('isin', holding.isin)
+              .limit(1)
+              .single();
+            if (data) {
+              matchedScheme = data;
+              confidence = 'high';
+            }
+          }
 
-      // Priority 3: fuzzy name match
-      if (!match && holding.scheme_name) {
-        const { data } = await supa.rpc('search_mf', {
-          q: holding.scheme_name.slice(0, 50),
-          max_results: 1,
-        });
-        if (data && data.length > 0) {
-          match = data[0];
-          confidence = 'medium';
+          // Priority 2: scheme code
+          if (!matchedScheme && holding.scheme_code) {
+            const { data } = await supa.from('mf_master')
+              .select('scheme_code,name,amc,plan,option,isin,nav,nav_date')
+              .eq('scheme_code', holding.scheme_code)
+              .limit(1)
+              .single();
+            if (data) {
+              matchedScheme = data;
+              confidence = 'high';
+            }
+          }
+
+          // Priority 3: fuzzy name match
+          if (!matchedScheme && holding.scheme_name) {
+            const { data } = await supa.rpc('search_mf', {
+              q: holding.scheme_name.slice(0, 50),
+              max_results: 1,
+            });
+            if (data && data.length > 0) {
+              matchedScheme = data[0];
+              confidence = 'medium';
+            }
+          }
+        }
+      } else if (isEquity) {
+        // Match equity
+        if (!supa) {
+          // Local mode
+          matchedStock = matchLocalStock(holding);
+          confidence = matchedStock ? 'high' : 'low';
+        } else {
+          // Cloud mode: match against equity_master
+          if (holding.symbol) {
+            const { data } = await supa.from('equity_master')
+              .select('exchange,symbol,name,isin')
+              .eq('symbol', holding.symbol.toUpperCase())
+              .limit(1);
+            if (data && data.length > 0) {
+              const stock = data[0];
+              matchedStock = {
+                symbol: stock.symbol,
+                name: stock.name,
+                isin: stock.isin,
+                exchange: stock.exchange,
+                price: Market.getStock(stock.symbol)?.price || null,
+              };
+              confidence = 'high';
+            }
+          }
         }
       }
 
       matched.push({
         ...holding,
-        matched_scheme: match,
+        matched_scheme: matchedScheme,
+        matched_stock: matchedStock,
         confidence,
       });
     }
@@ -247,6 +280,136 @@ Rules:
     return null;
   }
 
+  function matchLocalStock(holding) {
+    // Fallback matching using built-in Market stocks
+    if (holding.symbol) {
+      const stock = Market.getStock(holding.symbol.toUpperCase());
+      if (stock) return { symbol: stock.symbol, name: stock.name, price: stock.price, exchange: stock.exchange };
+    }
+    return null;
+  }
+
+  // ---- CSV universal import schema ----
+  const CSV_EXTRACTION_SCHEMA = {
+    type: 'object',
+    properties: {
+      asset_type: {
+        type: 'string',
+        enum: ['equity', 'mf', 'crypto', 'fd', 'gold', 'other'],
+        description: 'Type of assets in this CSV (equity=stocks, mf=mutual funds, etc.)',
+      },
+      holdings: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            // Equity fields
+            symbol: { type: ['string', 'null'], description: 'Stock ticker/symbol (for equity)' },
+            quantity: { type: ['number', 'null'], description: 'Number of shares/units' },
+            avg_price: { type: ['number', 'null'], description: 'Average buy price per unit' },
+            total_invested: { type: ['number', 'null'], description: 'Total amount invested' },
+
+            // MF fields
+            scheme_name: { type: ['string', 'null'], description: 'Full mutual fund scheme name' },
+            scheme_code: { type: ['string', 'null'], description: 'AMFI scheme code' },
+            units: { type: ['number', 'null'], description: 'MF units held' },
+            avg_nav: { type: ['number', 'null'], description: 'Average NAV' },
+            plan: { type: ['string', 'null'], description: 'Direct or Regular' },
+            option: { type: ['string', 'null'], description: 'Growth or IDCW' },
+            folio: { type: ['string', 'null'], description: 'Folio number' },
+
+            // Common fields
+            date: { type: ['string', 'null'], description: 'Acquisition/investment date (YYYY-MM-DD)' },
+            label: { type: ['string', 'null'], description: 'User label/nickname' },
+          },
+          required: ['date'],
+        },
+      },
+    },
+    required: ['asset_type', 'holdings'],
+  };
+
+  const CSV_EXTRACTION_PROMPT = `You are a financial portfolio import assistant. Analyze this CSV export and extract holdings into structured JSON.
+
+Output ONLY valid JSON matching this schema:
+${JSON.stringify(CSV_EXTRACTION_SCHEMA, null, 2)}
+
+Your task:
+1. Identify the asset type (equity, mf, crypto, fd, gold, other)
+2. Map CSV columns to the schema fields (be flexible with column names)
+3. Extract ALL data rows (skip totals/summaries)
+4. Normalize dates to YYYY-MM-DD format
+5. Use null for missing fields
+
+Common CSV formats:
+- TickerTape: "Fund Name", "Plan Type", "Option Type", "Units", "Invested Amt ₹"
+- Zerodha: "Symbol", "Quantity", "Average Cost", "LTP"
+- Groww: "Scheme Name", "Invested Amount", "Current Value", "Units"
+- Generic broker: any variation of stock/fund name, qty/units, price/NAV, amount, date
+
+Rules:
+- For mutual funds: extract scheme name (map "Fund Name" → scheme_name)
+- For stocks: extract symbol/ticker (map "Symbol"/"Stock"/"Scrip" → symbol)
+- Map quantity/shares/units → quantity or units (depending on type)
+- Map avg price/cost/NAV → avg_price or avg_nav
+- Map invested amount/total cost → total_invested
+- Convert all dates to YYYY-MM-DD (from DD-MM-YYYY, DD/MM/YYYY, or any format)
+- Skip summary rows (Total, Grand Total, etc.)
+- Do NOT invent data — use null for missing fields
+
+Output MUST be valid JSON only, no explanatory text.`;
+
+  // ---- Extract holdings from CSV via LLM ----
+  async function extractFromCSV(text) {
+    if (!API_KEY) {
+      throw new Error('VITE_GEMINI_API_KEY not configured — set it in .env to enable AI import');
+    }
+
+    const { GoogleGenerativeAI } = await import('@google/generative-ai');
+    const genAI = new GoogleGenerativeAI(API_KEY);
+    const model = genAI.getGenerativeModel({
+      model: MODEL,
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 8192,
+      },
+    });
+
+    try {
+      const prompt = `${CSV_EXTRACTION_PROMPT}\n\nCSV content:\n\n${text.slice(0, 100000)}`; // Cap at 100k chars
+
+      const result = await model.generateContent(prompt);
+      const response = result.response;
+      const responseText = response.text();
+
+      // Parse JSON from response
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('AI did not return valid JSON — try a different CSV format');
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      // Validate against schema
+      if (!parsed.asset_type || !parsed.holdings || !Array.isArray(parsed.holdings)) {
+        throw new Error('AI response missing required fields (asset_type or holdings)');
+      }
+
+      const estimatedTokens = Math.ceil(prompt.length / 4) + Math.ceil(responseText.length / 4);
+
+      return {
+        data: parsed,
+        model: MODEL,
+        tokens: estimatedTokens,
+      };
+    } catch (err) {
+      if (err.message?.includes('API key') || err.message?.includes('401')) {
+        throw new Error('Invalid Gemini API key — check VITE_GEMINI_API_KEY in .env');
+      }
+      throw err;
+    }
+  }
+
   // ---- Process file ----
   async function processFile(file) {
     // Validate file
@@ -254,54 +417,83 @@ Rules:
       throw new Error(`File too large (${Math.round(file.size / 1024 / 1024)} MB) — 10 MB max`);
     }
 
-    if (file.type !== 'application/pdf') {
-      throw new Error('Only PDF files supported in v1 — upload a CAS PDF');
+    const isCSV = file.type === 'text/csv' || file.name.endsWith('.csv');
+    const isPDF = file.type === 'application/pdf';
+
+    if (!isCSV && !isPDF) {
+      throw new Error('Only PDF and CSV files supported — upload a CAS PDF or portfolio CSV');
     }
 
-    // Read file
-    const arrayBuffer = await file.arrayBuffer();
-
-    // Extract text
     let extractedText;
-    try {
-      extractedText = await extractTextFromPDF(arrayBuffer);
-    } catch (err) {
-      if (extractedText === '' || !extractedText) {
-        throw new Error('PDF appears to be scanned/image-only — text-based PDFs only (OCR not yet supported)');
+    let fileType = isCSV ? 'csv' : 'cas_pdf';
+    let format = null;
+
+    if (isCSV) {
+      // Read CSV as text
+      extractedText = await file.text();
+      if (!extractedText || extractedText.trim().length < 50) {
+        throw new Error('CSV appears empty');
       }
-      throw new Error(`PDF extraction failed: ${err.message}`);
+      format = 'universal_csv';
+    } else {
+      // Read PDF
+      const arrayBuffer = await file.arrayBuffer();
+
+      // Extract text
+      try {
+        extractedText = await extractTextFromPDF(arrayBuffer);
+      } catch (err) {
+        if (extractedText === '' || !extractedText) {
+          throw new Error('PDF appears to be scanned/image-only — text-based PDFs only (OCR not yet supported)');
+        }
+        throw new Error(`PDF extraction failed: ${err.message}`);
+      }
+
+      if (!extractedText || extractedText.trim().length < 100) {
+        throw new Error('PDF appears empty or scanned — text-based PDFs only (OCR not yet supported)');
+      }
+
+      // Detect CAS format
+      format = detectCASFormat(extractedText);
+      if (!format) {
+        throw new Error('Unrecognized PDF format — expected CAMS or KFintech CAS statement');
+      }
     }
 
-    if (!extractedText || extractedText.trim().length < 100) {
-      throw new Error('PDF appears empty or scanned — text-based PDFs only (OCR not yet supported)');
-    }
-
-    // Detect format
-    const format = detectCASFormat(extractedText);
-    if (!format) {
-      throw new Error('Unrecognized format — expected CAMS or KFintech CAS statement');
-    }
-
-    // Chunk by folio
-    const chunks = chunkCASByFolio(extractedText);
-
-    // Extract from each chunk
-    const allHoldings = [];
+    // Extract holdings via AI
+    let allHoldings = [];
+    let assetType = 'mf'; // default for CAS PDFs
     const errors = [];
     let totalTokens = 0;
 
-    for (let i = 0; i < chunks.length; i++) {
+    if (isCSV) {
+      // Universal CSV extraction
       try {
-        const result = await extractViaLLM(chunks[i]);
-        allHoldings.push(...result.data.holdings);
-        totalTokens += result.tokens;
+        const result = await extractFromCSV(extractedText);
+        allHoldings = result.data.holdings || [];
+        assetType = result.data.asset_type || 'mf';
+        totalTokens = result.tokens;
       } catch (err) {
-        errors.push({ chunk: i + 1, error: err.message });
+        errors.push({ chunk: 0, error: err.message });
+        throw new Error(`CSV extraction failed: ${err.message}`);
       }
-    }
+    } else {
+      // PDF CAS extraction (existing logic)
+      const chunks = chunkCASByFolio(extractedText);
 
-    if (allHoldings.length === 0 && errors.length > 0) {
-      throw new Error(`Extraction failed: ${errors[0].error}`);
+      for (let i = 0; i < chunks.length; i++) {
+        try {
+          const result = await extractViaLLM(chunks[i]);
+          allHoldings.push(...result.data.holdings);
+          totalTokens += result.tokens;
+        } catch (err) {
+          errors.push({ chunk: i + 1, error: err.message });
+        }
+      }
+
+      if (allHoldings.length === 0 && errors.length > 0) {
+        throw new Error(`Extraction failed: ${errors[0].error}`);
+      }
     }
 
     // Match against masters
@@ -310,8 +502,9 @@ Rules:
     // Create import job record
     const jobData = {
       filename: file.name,
-      file_type: 'cas_pdf',
+      file_type: fileType,
       input_format: format,
+      asset_type: assetType,
       extracted_data: { holdings: allHoldings },
       extraction_model: MODEL,
       extraction_tokens: totalTokens,
@@ -341,13 +534,15 @@ Rules:
   function openReviewModal(job, onConfirm) {
     const matched = job.matched_holdings || [];
     const lowConf = new Set(job.low_confidence_ids || []);
+    const assetType = job.asset_type || 'mf';
+    const assetLabel = assetType === 'equity' ? 'stock' : 'mutual fund';
 
     const back = document.createElement('div');
     back.className = 'modal-backdrop';
     back.innerHTML = `<div class="modal" role="dialog" aria-label="Review AI Import" style="max-width:920px;width:95vw">
       <h3>📄 Review import — ${esc(job.filename)}</h3>
       <p class="small dim" style="margin-bottom:12px">
-        Extracted ${matched.length} mutual fund holding${matched.length !== 1 ? 's' : ''} from ${esc(job.input_format || 'CAS')} statement.
+        Extracted ${matched.length} ${assetLabel} holding${matched.length !== 1 ? 's' : ''} from ${esc(job.input_format || job.file_type)}.
         ${job.extraction_errors ? `<span style="color:var(--neg)">⚠️ ${job.extraction_errors.length} chunk(s) had errors.</span>` : ''}
         Review and edit before importing.
       </p>
@@ -355,8 +550,8 @@ Rules:
       <div id="ai_import_preview" style="max-height:400px;overflow:auto;margin-bottom:12px"></div>
 
       <div class="hint" style="margin-bottom:12px">
-        <b>Low-confidence matches</b> are flagged in yellow — verify scheme names before importing.
-        Click a row to edit manually.
+        <b>Low-confidence matches</b> are flagged in yellow — verify names before importing.
+        AI-powered universal import supports TickerTape, Zerodha, Groww, Kuvera, and other broker exports.
       </div>
 
       <div class="modal-actions">
@@ -371,25 +566,58 @@ Rules:
 
     // Render preview table
     const previewEl = back.querySelector('#ai_import_preview');
-    const rows = matched.map((m, i) => {
-      const isLowConf = lowConf.has(String(i));
-      const rowClass = isLowConf ? 'style="background:var(--warn-bg,#fff3cd)"' : '';
-      const schemeDisplay = m.matched_scheme
-        ? `${esc(m.matched_scheme.name)} ${m.matched_scheme.plan ? `(${m.matched_scheme.plan})` : ''}`
-        : `<span style="color:var(--neg)">❌ ${esc(m.scheme_name)} — no match</span>`;
+    let rows, tableHtml;
 
-      return `<tr ${rowClass} data-idx="${i}">
-        <td class="small">${isLowConf ? '⚠️' : '✅'}</td>
-        <td class="asset-name small">${schemeDisplay}</td>
-        <td class="num">${m.units?.toFixed(3) || '—'}</td>
-        <td class="num">${m.matched_scheme?.nav ? `₹${m.matched_scheme.nav.toFixed(2)}` : '—'}</td>
-        <td class="num">${m.matched_scheme ? Fin.fmtINR((m.units || 0) * (m.matched_scheme.nav || 0), { compact: true }) : '—'}</td>
-        <td class="small dim">${m.folio || '—'}</td>
-      </tr>`;
-    }).join('');
+    if (assetType === 'equity') {
+      // Equity table
+      rows = matched.map((m, i) => {
+        const isLowConf = lowConf.has(String(i));
+        const rowClass = isLowConf ? 'style="background:var(--warn-bg,#fff3cd)"' : '';
+        const stockDisplay = m.matched_stock
+          ? `${esc(m.matched_stock.symbol)} — ${esc(m.matched_stock.name)}`
+          : `<span style="color:var(--neg)">❌ ${esc(m.symbol || 'Unknown')} — no match</span>`;
 
-    previewEl.innerHTML = `
-      <div class="tbl-wrap"><table class="tbl">
+        return `<tr ${rowClass} data-idx="${i}">
+          <td class="small">${isLowConf ? '⚠️' : '✅'}</td>
+          <td class="asset-name small">${stockDisplay}</td>
+          <td class="num">${m.quantity?.toFixed(0) || '—'}</td>
+          <td class="num">${m.avg_price ? `₹${m.avg_price.toFixed(2)}` : '—'}</td>
+          <td class="num">${m.matched_stock?.price ? `₹${m.matched_stock.price.toFixed(2)}` : '—'}</td>
+          <td class="num">${m.matched_stock && m.quantity ? Fin.fmtINR((m.quantity || 0) * (m.matched_stock.price || 0), { compact: true }) : '—'}</td>
+        </tr>`;
+      }).join('');
+
+      tableHtml = `<div class="tbl-wrap"><table class="tbl">
+        <thead><tr>
+          <th></th>
+          <th>Stock</th>
+          <th class="num">Qty</th>
+          <th class="num">Avg Price</th>
+          <th class="num">LTP</th>
+          <th class="num">Value</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>`;
+    } else {
+      // Mutual fund table
+      rows = matched.map((m, i) => {
+        const isLowConf = lowConf.has(String(i));
+        const rowClass = isLowConf ? 'style="background:var(--warn-bg,#fff3cd)"' : '';
+        const schemeDisplay = m.matched_scheme
+          ? `${esc(m.matched_scheme.name)} ${m.plan || m.matched_scheme.plan ? `(${m.plan || m.matched_scheme.plan})` : ''}`
+          : `<span style="color:var(--neg)">❌ ${esc(m.scheme_name)} — no match</span>`;
+
+        return `<tr ${rowClass} data-idx="${i}">
+          <td class="small">${isLowConf ? '⚠️' : '✅'}</td>
+          <td class="asset-name small">${schemeDisplay}</td>
+          <td class="num">${m.units?.toFixed(3) || '—'}</td>
+          <td class="num">${m.matched_scheme?.nav ? `₹${m.matched_scheme.nav.toFixed(2)}` : '—'}</td>
+          <td class="num">${m.matched_scheme ? Fin.fmtINR((m.units || 0) * (m.matched_scheme.nav || 0), { compact: true }) : '—'}</td>
+          <td class="small dim">${m.folio || '—'}</td>
+        </tr>`;
+      }).join('');
+
+      tableHtml = `<div class="tbl-wrap"><table class="tbl">
         <thead><tr>
           <th></th>
           <th>Scheme</th>
@@ -399,8 +627,10 @@ Rules:
           <th>Folio</th>
         </tr></thead>
         <tbody>${rows}</tbody>
-      </table></div>
-    `;
+      </table></div>`;
+    }
+
+    previewEl.innerHTML = tableHtml;
 
     // Confirm handler
     back.querySelector('#ai_import_confirm').addEventListener('click', async () => {
@@ -416,32 +646,59 @@ Rules:
       return;
     }
 
+    const assetType = job.asset_type || 'mf';
     const assetsToAdd = matched
-      .filter(m => m.matched_scheme) // skip unmatched
+      .filter(m => m.matched_scheme || m.matched_stock) // skip unmatched
       .map(m => {
-        const scheme = m.matched_scheme;
-        return {
-          type: 'mf',
-          label: scheme.name,
-          acquiredOn: new Date().toISOString().slice(0, 10), // Use today as acquired date (CAS doesn't have first-buy date)
-          currency: 'INR',
-          data: {
-            schemeCode: scheme.scheme_code,
-            schemeName: scheme.name,
-            plan: scheme.plan || 'Direct',
-            option: scheme.option || 'Growth',
-            units: m.units,
-            avgNav: m.invested && m.units ? m.invested / m.units : scheme.nav || 100,
-            totalInvested: m.invested || (m.units * (scheme.nav || 100)),
-            lastNav: scheme.nav,
-            folio: m.folio || undefined,
-          },
-          ownership: 'single',
-          sharePct: 100,
-          tags: ['imported', 'cas'],
-          notes: `Imported from ${job.filename}`,
-        };
-      });
+        if (assetType === 'mf') {
+          // Mutual fund import
+          const scheme = m.matched_scheme;
+          return {
+            type: 'mf',
+            label: scheme.name,
+            acquiredOn: m.date || new Date().toISOString().slice(0, 10),
+            currency: 'INR',
+            data: {
+              schemeCode: scheme.scheme_code,
+              schemeName: scheme.name,
+              plan: m.plan || scheme.plan || 'Direct',
+              option: m.option || scheme.option || 'Growth',
+              units: m.units,
+              avgNav: m.avg_nav || (m.invested && m.units ? m.invested / m.units : scheme.nav || 100),
+              totalInvested: m.invested || m.total_invested || (m.units * (scheme.nav || 100)),
+              lastNav: scheme.nav,
+              folio: m.folio || undefined,
+            },
+            ownership: 'single',
+            sharePct: 100,
+            tags: ['imported', 'ai'],
+            notes: `Imported from ${job.filename}`,
+          };
+        } else if (assetType === 'equity') {
+          // Equity/stock import
+          const stock = m.matched_stock;
+          return {
+            type: 'equity',
+            label: m.label || stock.symbol,
+            acquiredOn: m.date || new Date().toISOString().slice(0, 10),
+            currency: 'INR',
+            data: {
+              symbol: stock.symbol,
+              quantity: m.quantity,
+              avgPrice: m.avg_price || (m.total_invested && m.quantity ? m.total_invested / m.quantity : stock.price || 100),
+              totalInvested: m.total_invested || (m.quantity * (m.avg_price || stock.price || 100)),
+              lastPrice: stock.price,
+              isin: stock.isin || undefined,
+            },
+            ownership: 'single',
+            sharePct: 100,
+            tags: ['imported', 'ai'],
+            notes: `Imported from ${job.filename}`,
+          };
+        }
+        return null;
+      })
+      .filter(Boolean);
 
     // Add to store
     const assetIds = [];
@@ -465,7 +722,10 @@ Rules:
 
     const skipped = matched.length - assetsToAdd.length;
     UI.toast(`${assetsToAdd.length} holdings imported${skipped > 0 ? `, ${skipped} skipped (no match)` : ''}`);
-    Router.go('/holdings/mf');
+
+    // Navigate to appropriate holdings page
+    const targetPage = assetType === 'equity' ? '/holdings/equity' : '/holdings/mf';
+    Router.go(targetPage);
   }
 
   // ---- Public API: open upload modal ----
@@ -478,23 +738,26 @@ Rules:
     const back = document.createElement('div');
     back.className = 'modal-backdrop';
     back.innerHTML = `<div class="modal" role="dialog" aria-label="AI-Powered Import" style="max-width:640px">
-      <h3>🤖 AI-Powered Import (Beta)</h3>
+      <h3>🤖 AI-Powered Universal Import</h3>
       <p class="small dim" style="margin-bottom:12px">
-        Upload a CAS (Consolidated Account Statement) PDF to automatically extract your mutual fund holdings.
-        <b>Currently supports: CAMS and KFintech CAS statements.</b>
+        Upload a portfolio export from <b>any broker or platform</b> and AI will automatically extract your holdings.
+        Works with TickerTape, Zerodha, Groww, Kuvera, CAS statements, and more!
       </p>
 
       <div class="field" style="margin-bottom:12px">
-        <label>CAS PDF (text-based only, max 10 MB)</label>
-        <input type="file" id="ai_import_file" accept=".pdf,application/pdf" />
-        <div class="hint">Password-protected PDFs: enter password after selecting file.</div>
+        <label>Upload CSV or PDF (max 10 MB)</label>
+        <input type="file" id="ai_import_file" accept=".csv,.pdf,text/csv,application/pdf" />
+        <div class="hint">
+          <b>CSV:</b> TickerTape, Zerodha, Groww, Kuvera, or any broker export<br>
+          <b>PDF:</b> CAMS/KFintech CAS statements (text-based only)
+        </div>
       </div>
 
       <div id="ai_import_status" style="margin-bottom:12px;min-height:24px"></div>
 
       <div class="modal-actions">
         <button class="btn" data-cancel>Cancel</button>
-        <button class="btn primary" id="ai_import_process" disabled>Process</button>
+        <button class="btn primary" id="ai_import_process" disabled>Process with AI</button>
       </div>
     </div>`;
 
@@ -518,13 +781,20 @@ Rules:
 
       processBtn.disabled = true;
       fileInput.disabled = true;
-      statusEl.innerHTML = '<div class="small">⏳ Extracting text from PDF...</div>';
+
+      const isCSV = selectedFile.name.endsWith('.csv') || selectedFile.type === 'text/csv';
+      const statusMsg = isCSV ? '⏳ Reading CSV and analyzing with AI...' : '⏳ Extracting text from PDF...';
+      statusEl.innerHTML = `<div class="small">${statusMsg}</div>`;
 
       try {
-        statusEl.innerHTML = '<div class="small">⏳ Analyzing with AI...</div>';
-        const job = await processFile(selectedFile);
+        if (!isCSV) {
+          statusEl.innerHTML = '<div class="small">⏳ Analyzing with AI...</div>';
+        }
 
-        statusEl.innerHTML = `<div class="small" style="color:var(--pos)">✅ Extracted ${job.matched_holdings?.length || 0} holdings</div>`;
+        const job = await processFile(selectedFile);
+        const assetLabel = job.asset_type === 'equity' ? 'stocks' : 'mutual funds';
+
+        statusEl.innerHTML = `<div class="small" style="color:var(--pos)">✅ Extracted ${job.matched_holdings?.length || 0} ${assetLabel}</div>`;
 
         setTimeout(() => {
           back.remove();

@@ -2,9 +2,39 @@
 
 ## Overview
 
-WealthForge AI now supports **automatic import of TickerTape mutual fund holdings** via CSV export! No manual mapping required - just export from TickerTape and import directly.
+WealthForge AI offers **TWO ways** to import TickerTape holdings:
 
-## How to Use
+1. **🤖 AI-Powered Universal Import** (Recommended) - Works with ANY CSV format, including TickerTape
+2. **📋 Native TickerTape Format Support** - Built-in support for TickerTape's specific CSV structure
+
+Both methods work seamlessly - choose based on your preference!
+
+## Method 1: AI-Powered Import (Recommended)
+
+### Why Choose AI Import?
+- ✅ Works with TickerTape AND other brokers (Zerodha, Groww, Kuvera, etc.)
+- ✅ Handles ANY column structure automatically
+- ✅ Smart name matching even if TickerTape names don't match AMFI exactly
+- ✅ Future-proof (works even if TickerTape changes their CSV format)
+
+### Steps:
+1. Export from TickerTape → Download CSV
+2. In WealthForge: Click "Add asset" → "🤖 AI-Powered Import (BETA)"
+3. Upload your `Holdings-2.csv` file
+4. AI automatically detects format and extracts holdings
+5. Review preview table → Click "Import"
+
+See [AI_UNIVERSAL_IMPORT.md](./AI_UNIVERSAL_IMPORT.md) for complete guide.
+
+---
+
+## Method 2: Native TickerTape Format
+
+### Why Choose Native Import?
+- ✅ No AI API key required
+- ✅ Instant processing (no AI calls)
+- ✅ Works offline (local mode)
+- ✅ Predictable column mapping
 
 ### Step 1: Export from TickerTape
 
