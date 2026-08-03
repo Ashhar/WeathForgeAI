@@ -307,6 +307,15 @@ const UI = (() => {
             </button>`;
           }).join('')}
         </div>`).join('')}
+      <div class="picker-group-title">Bulk Import</div>
+      <div class="type-grid">
+        <button class="type-card" onclick="AIImport.openUploadModal()" style="background:linear-gradient(135deg, var(--brand-bg, #1a1f2e) 0%, var(--card-bg, #242938) 100%); border-color: var(--brand, #00d4ff)">
+          <div class="t-ico">🤖</div>
+          <div class="t-name">AI-Powered Import <span class="tag" style="font-size:9px;vertical-align:super;background:var(--brand);color:#fff;border:none">BETA</span></div>
+          <div class="t-desc">Upload CAS PDF (CAMS/KFintech) — AI extracts mutual fund holdings automatically</div>
+          <span class="tag live"><span class="dot"></span>Intelligent</span>
+        </button>
+      </div>
       <div class="picker-group-title">Liabilities</div>
       <div class="type-grid">
         <button class="type-card" onclick="Router.go('/add-liability')">
@@ -316,7 +325,7 @@ const UI = (() => {
           <span class="tag computed"><span class="dot"></span>Amortized</span>
         </button>
       </div>
-      <div class="disclaimer" style="margin-top:22px">💡 Have a broker / AMC / bank statement handy? Each form has a quick path — quantity, average cost, date — you can finish in seconds, and an optional detailed path (transaction lots) that unlocks true XIRR.</div>`;
+      <div class="disclaimer" style="margin-top:22px">💡 Have a broker / AMC / bank statement handy? Each form has a quick path — quantity, average cost, date — you can finish in seconds, and an optional detailed path (transaction lots) that unlocks true XIRR. Or use <b>AI Import</b> to extract holdings from your CAS statement automatically.</div>`;
   }
 
   function addEditForm(type, editId) {
