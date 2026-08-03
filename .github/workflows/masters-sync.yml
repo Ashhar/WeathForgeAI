@@ -1,0 +1,23 @@
+name: Security masters sync
+
+# Daily refresh of equity_master (full NSE + BSE lists) and mf_master
+# (full AMFI scheme/NAV dump). 01:30 UTC = 07:00 IST, after AMFI posts
+# the previous day's NAVs. Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
+on:
+  schedule:
+    - cron: "30 1 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync-masters:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Ingest NSE / BSE / AMFI masters
+        run: node scripts/sync-masters.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

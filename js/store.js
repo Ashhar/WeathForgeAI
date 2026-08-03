@@ -398,14 +398,16 @@ const Store = (() => {
     switch (a.type) {
       case 'equity': {
         const s = Market.getStock(d.symbol);
-        const price = s ? s.price : (d.lastPrice || 0);
+        // master-listed symbols have no LTP feed (price null) — fall back
+        // to the holding's last known price just like unknown symbols
+        const price = (s && s.price != null) ? s.price : (d.lastPrice || d.avgPrice || 0);
         const isUSD = s && s.currency === 'USD';
         const fxRate = isUSD ? Market.FX.USDINR : 1;
         if (isUSD) fx = { currency: 'USD', rate: fxRate };
         v = (d.quantity || 0) * price * fxRate;
         invested = d.totalInvested != null ? d.totalInvested : (d.quantity || 0) * (d.avgPrice || 0) * fxRate;
         if (d.charges) invested += d.charges;
-        dayChangePct = s ? Market.dayChangePct(d.symbol, s.sigma) / 100 : null;
+        dayChangePct = (s && s.price != null) ? Market.dayChangePct(d.symbol, s.sigma) / 100 : null;
         sub = s ? `${s.exchange} · ₹${Fin.fmtQty(price * fxRate, 2)}` : d.symbol;
         if (s) { mu = s.mu; sigma = s.sigma; }
         break;
@@ -421,7 +423,8 @@ const Store = (() => {
           if (s.category === 'debt' || s.category === 'liquid') notes.push('Debt/liquid scheme — narrow projection band.');
           if (s.elss) notes.push('ELSS: 3-year lock-in per instalment.');
         }
-        dayChangePct = s ? Market.dayChangePct(d.schemeCode, s.sigma) / 200 : null;
+        // master schemes carry one real AMFI NAV — no simulated day change
+        dayChangePct = (s && !s.exactNav) ? Market.dayChangePct(d.schemeCode, s.sigma) / 200 : null;
         break;
       }
       case 'esop': {
@@ -429,7 +432,7 @@ const Store = (() => {
         const isUSD = (d.currency || (s && s.currency)) === 'USD';
         const fxRate = isUSD ? Market.FX.USDINR : 1;
         if (isUSD) fx = { currency: 'USD', rate: fxRate };
-        const price = s ? s.price : (d.sharePrice || 0);
+        const price = (s && s.price != null) ? s.price : (d.sharePrice || 0);
         const sch = { startDate: d.vestStart, totalUnits: d.totalUnits || 0, cliffMonths: d.cliffMonths || 0, freq: d.freq || 'monthly', durationMonths: d.durationMonths || 48 };
         const vested = Fin.vestedUnits(sch);
         const isOption = d.grantType === 'ISO' || d.grantType === 'NSO';

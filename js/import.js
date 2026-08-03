@@ -91,18 +91,21 @@ const Importer = (() => {
       mapRow(o, err) {
         const symbol = (o.symbol || '').toUpperCase();
         if (!symbol) return err('missing symbol');
-        if (!Market.getStock(symbol)) return err(`unknown symbol "${symbol}" — not in the market feed`);
+        const stk = Market.getStock(symbol);
+        if (!stk) return err(`unknown symbol "${symbol}" — not in the NSE/BSE master`);
         const quantity = parseNumber(o.quantity);
         if (!quantity || quantity <= 0) return err('quantity must be a positive number');
         const date = normalizeDate(o.date);
         if (!date) return err(`invalid date "${o.date || ''}" — use YYYY-MM-DD or DD-MM-YYYY`);
         const avgPrice = parseNumber(o.avg_price), totalInvested = parseNumber(o.total_invested);
         if (avgPrice == null && totalInvested == null) return err('enter avg_price or total_invested');
+        const finalAvg = avgPrice != null ? avgPrice : +(totalInvested / quantity).toFixed(4);
         return { acquiredOn: date, data: {
           symbol, quantity,
-          avgPrice: avgPrice != null ? avgPrice : +(totalInvested / quantity).toFixed(4),
+          avgPrice: finalAvg,
           totalInvested: totalInvested != null ? totalInvested : +(quantity * avgPrice).toFixed(2),
-          isin: o.isin || undefined,
+          lastPrice: stk.price != null ? undefined : finalAvg, // no LTP feed → freeze at cost
+          isin: o.isin || (stk.isin || undefined),
         } };
       },
     },
@@ -124,7 +127,8 @@ const Importer = (() => {
       mapRow(o, err) {
         const code = String(o.scheme_code || '').trim();
         if (!code) return err('missing scheme_code');
-        if (!Market.getScheme(code)) return err(`unknown scheme code "${code}" — not in the fund master`);
+        const sch = Market.getScheme(code);
+        if (!sch) return err(`unknown scheme code "${code}" — not in the AMFI fund master`);
         const date = normalizeDate(o.date);
         if (!date) return err(`invalid date "${o.date || ''}"`);
         const units = parseNumber(o.units), amount = parseNumber(o.amount), avgNav = parseNumber(o.avg_nav);
@@ -132,11 +136,13 @@ const Importer = (() => {
         if (u == null && amount != null && avgNav) u = amount / avgNav;
         if (invested == null && u != null && avgNav) invested = u * avgNav;
         if (u == null) return err('enter units, or amount + avg_nav');
-        const plan = /^reg/i.test(o.plan || '') ? 'Regular' : 'Direct';
-        const option = /^idcw|div/i.test(o.option || '') ? 'IDCW' : 'Growth';
+        const plan = /^reg/i.test(o.plan || '') ? 'Regular' : (sch.plan || 'Direct') === 'Regular' && !o.plan ? 'Regular' : 'Direct';
+        const option = /^idcw|div/i.test(o.option || '') ? 'IDCW' : (sch.option === 'IDCW' && !o.option ? 'IDCW' : 'Growth');
         return { acquiredOn: date, data: {
           schemeCode: code, plan, option,
           units: u, avgNav: avgNav || (invested && u ? invested / u : undefined), totalInvested: invested,
+          schemeName: sch.name,
+          lastNav: Market.schemeNav(code, plan) || avgNav || undefined,
           folio: o.folio || undefined,
         } };
       },
@@ -509,6 +515,36 @@ const Importer = (() => {
     return { assets, errors, total: dataRows.length };
   }
 
+  // Resolve identifiers against the cloud master tables before the sync
+  // importRows validation runs (no-op in local mode). Candidates are
+  // gathered as a cheap superset of all cells that look like the id.
+  async function prefetchMasters(type, text) {
+    const supa = typeof globalThis !== 'undefined' ? globalThis.Supa : null;
+    if (!supa || !supa.client) return;
+    const cells = parseCsv(text || '').flat();
+    try {
+      if (type === 'mf') {
+        const codes = [...new Set(cells.filter(c => /^\d{5,7}$/.test(c)))].filter(c => !Market.getScheme(c));
+        if (!codes.length) return;
+        const { data } = await supa.client.from('mf_master')
+          .select('scheme_code,name,amc,category,plan,option,isin,nav,nav_date').in('scheme_code', codes);
+        (data || []).forEach(r => Market.registerScheme({
+          code: r.scheme_code, name: r.name, amc: r.amc, category: r.category,
+          plan: r.plan, option: r.option, isin: r.isin,
+          nav: r.nav != null ? Number(r.nav) : null, navDate: r.nav_date,
+        }));
+      } else if (type === 'equity' || type === 'esop') {
+        const syms = [...new Set(cells.map(c => c.toUpperCase()).filter(c => /^[A-Z][A-Z0-9&-]{1,19}$/.test(c)))]
+          .filter(s => !Market.getStock(s));
+        if (!syms.length) return;
+        const { data } = await supa.client.from('equity_master')
+          .select('exchange,symbol,name,isin').in('symbol', syms);
+        const rows = (data || []).sort((a, b) => (a.exchange === 'NSE' ? -1 : 1) - (b.exchange === 'NSE' ? -1 : 1));
+        rows.forEach(r => { if (!Market.getStock(r.symbol)) Market.registerStock({ symbol: r.symbol, name: r.name, isin: r.isin, exchange: r.exchange }); });
+      }
+    } catch (e) { console.error('prefetchMasters failed — falling back to built-in lists', e); }
+  }
+
   // ---------- preview / confirm modal ----------
   function openModal(type) {
     const schema = SCHEMAS[type];
@@ -553,7 +589,8 @@ const Importer = (() => {
       rd.readAsText(f);
     });
 
-    function preview() {
+    async function preview() {
+      await prefetchMasters(type, textEl.value);
       const res = importRows(type, textEl.value);
       pending = res;
       const okRows = res.assets.map(a => {
@@ -597,7 +634,7 @@ const Importer = (() => {
     });
   }
 
-  return { parseCsv, normalizeDate, parseNumber, importRows, openModal, SCHEMAS };
+  return { parseCsv, normalizeDate, parseNumber, importRows, prefetchMasters, openModal, SCHEMAS };
 })();
 
 if (typeof globalThis !== 'undefined') globalThis.Importer = Importer;

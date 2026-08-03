@@ -424,7 +424,7 @@ const Views = (() => {
     let chartHtml = '', chartCaption = '';
     if (v.mode === 'live' && LIVE_HISTORY.includes(a.type)) {
       let key, price, sigma, mu, fxMul = 1;
-      if (a.type === 'equity') { const s = Market.getStock(d.symbol); key = d.symbol; price = s ? s.price : 0; sigma = v.sigma; mu = v.mu; fxMul = s && s.currency === 'USD' ? Market.FX.USDINR : 1; }
+      if (a.type === 'equity') { const s = Market.getStock(d.symbol); key = d.symbol; price = (s && s.price != null) ? s.price : (d.lastPrice || 0); sigma = v.sigma; mu = v.mu; fxMul = s && s.currency === 'USD' ? Market.FX.USDINR : 1; }
       else if (a.type === 'mf') { key = d.schemeCode; price = Market.schemeNav(d.schemeCode, d.plan) || 0; sigma = v.sigma; mu = v.mu; }
       else if (a.type === 'crypto') { const c = Market.getCoin(d.coinId); key = d.coinId; price = c ? c.priceUSD : 0; sigma = v.sigma; mu = v.mu; fxMul = Market.FX.USDINR; }
       else { key = 'metal:' + (d.metal || 'gold'); price = d.form === 'etf' || d.form === 'sgb' ? (Market.getGoldUnit(d.instrumentId) || { price: d.lastUnitPrice || 0 }).price : (Market.metalRate(d.metal || 'gold') || {}).perGram * Market.purityFactor(d.purity || '24K'); sigma = v.sigma; mu = v.mu; }
@@ -435,7 +435,7 @@ const Views = (() => {
     } else if (a.type === 'esop' && d.ticker && !d.isPrivate) {
       const s = Market.getStock(d.ticker);
       const fxMul = s && s.currency === 'USD' ? Market.FX.USDINR : 1;
-      const hist = Market.priceHistory(d.ticker, (s ? s.price : 0) * fxMul, 250, v.sigma, v.mu);
+      const hist = Market.priceHistory(d.ticker, ((s && s.price != null) ? s.price : (d.sharePrice || 0)) * fxMul, 250, v.sigma, v.mu);
       const yr = new Date().getFullYear();
       chartHtml = Charts.line(hist, { xLabels: [`${yr - 1}`, '', `${yr}`], yFmt: Charts.compactINR });
       chartCaption = `${esc(d.ticker)} — simulated 12-month share price (₹).`;
@@ -492,7 +492,7 @@ const Views = (() => {
     add('Ownership', a.ownership === 'joint' ? `Joint — your share ${a.sharePct}%` : 'Single');
     if (v.fx) add('FX', `Priced in ${v.fx.currency}, converted @ ₹${v.fx.rate}/$ ${Market.rateChip('USDINR')}`);
     if (a.type === 'equity') { add('Symbol', esc(d.symbol)); add('Quantity', fmtQty(d.quantity)); add('Avg buy price', fmtINR(d.avgPrice, { decimals: 1 })); if (d.dividends) add('Dividends received', fmtINR(d.dividends)); if (d.isin) add('ISIN', esc(d.isin)); }
-    if (a.type === 'mf') { const s = Market.getScheme(d.schemeCode); add('Scheme', esc(s ? s.name : d.schemeCode)); add('Plan / option', `${esc(d.plan)} · ${esc(d.option)}`); add('Units', fmtQty(d.units, 3)); add('Avg cost NAV', fmtINR(d.avgNav, { decimals: 1 })); if (d.sipOngoing) add('SIP', `${fmtINR(d.sipAmount)} / ${d.sipFreq || 'monthly'} (ongoing)`); if (d.folio) add('Folio', esc(d.folio)); }
+    if (a.type === 'mf') { const s = Market.getScheme(d.schemeCode); add('Scheme', esc(s ? s.name : (d.schemeName || d.schemeCode))); add('Plan / option', `${esc(d.plan)} · ${esc(d.option)}`); add('Units', fmtQty(d.units, 3)); add('Avg cost NAV', fmtINR(d.avgNav, { decimals: 1 })); if (d.sipOngoing) add('SIP', `${fmtINR(d.sipAmount)} / ${d.sipFreq || 'monthly'} (ongoing)`); if (d.folio) add('Folio', esc(d.folio)); }
     if (a.type === 'esop') { add('Company', esc(d.company)); if (d.ticker) add('Ticker', esc(d.ticker)); add('Grant type', esc(d.grantType)); if (d.strike != null) { add('Strike', `${d.currency === 'USD' ? '$' : '₹'}${fmtQty(d.strike, 2)}`); add('Intrinsic / unit', fmtINR(x.perUnit, { decimals: 1 })); } add('Share price', fmtINR(x.price, { decimals: 1 })); if (d.isPrivate) add('Liquidity', '<span class="tag manual"><span class="dot"></span>Illiquid · assumption-based</span>'); if (d.exitNote) add('Exit assumption', esc(d.exitNote)); }
     if (a.type === 'fd') {
       add('Bank / institution', esc(d.bank || '—') + (d.institutionType && d.institutionType !== 'bank' ? ` (${d.institutionType})` : ''));
@@ -705,9 +705,11 @@ const Views = (() => {
     // live-rate feeds report their real freshness (or an explicit stale state)
     const fxInfo = Market.rateInfo('USDINR');
     const metalInfo = Market.rateInfo('gold');
+    const cloud = typeof Supa !== 'undefined' && Supa.enabled;
     const SOURCES = [
-      { name: 'Equity LTP (NSE/BSE)', mode: 'live', src: 'Simulated feed — swap for an exchange/broker API', fresh: 'per session' },
-      { name: 'Mutual fund NAV', mode: 'live', src: 'Simulated — swap for AMFI daily NAV', fresh: 'per session' },
+      { name: 'Equity search (NSE/BSE)', mode: 'live', src: cloud ? 'Full NSE + BSE scrip masters, ISIN-deduped, refreshed daily' : 'Built-in demo list — cloud mode unlocks the full masters', fresh: cloud ? 'daily' : 'per session' },
+      { name: 'Equity LTP', mode: 'live', src: 'Demo tickers: simulated feed · other listings: your average cost until an LTP API is integrated', fresh: 'per session' },
+      { name: 'Mutual fund search + NAV', mode: 'live', src: cloud ? 'Full AMFI scheme master with official daily NAVs' : 'Built-in demo list — cloud mode unlocks the AMFI master', fresh: cloud ? 'daily (previous business day)' : 'per session' },
       { name: 'RSU / ESOP share price', mode: 'live', src: 'Listed: ticker feed · Private: your 409A/last-round value', fresh: 'listed live · private manual' },
       { name: 'NPS', mode: 'live', src: 'E/C/G blend from your allocation; corpus from your CRA statement', fresh: 'statement date' },
       { name: 'Crypto prices (USD)', mode: 'live', src: 'Simulated — swap for an exchange API', fresh: 'per session' },

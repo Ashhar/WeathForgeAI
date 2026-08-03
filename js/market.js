@@ -112,25 +112,150 @@ const Market = (() => {
     return pts;
   }
 
+  // ---------- master universe (cloud mode) ----------
+  // Search runs over the full NSE/BSE equity master and AMFI fund master
+  // in Supabase (see supabase/migrations/0003_security_masters.sql).
+  // Picked/held securities are registered here so the synchronous
+  // getStock/getScheme/schemeNav valuation path keeps working. Prices:
+  // MF NAVs are real (AMFI daily); master equities have no LTP feed yet
+  // (price null → valuation falls back to the holding's lastPrice).
+  const EXTRA_STOCKS = new Map();  // symbol → stock-shaped entry
+  const EXTRA_SCHEMES = new Map(); // code → scheme-shaped entry
+
+  const MF_DEFAULTS = {
+    equity: { mu: 0.13, sigma: 0.17 },
+    hybrid: { mu: 0.11, sigma: 0.10 },
+    debt: { mu: 0.07, sigma: 0.025 },
+    liquid: { mu: 0.065, sigma: 0.005 },
+    other: { mu: 0.10, sigma: 0.12 },
+  };
+
+  function registerStock(s) {
+    if (!s || !s.symbol) return null;
+    const entry = {
+      symbol: s.symbol, name: s.name || s.symbol,
+      exchange: s.exchange || (s.exchanges || []).join(' · ') || 'NSE',
+      exchanges: s.exchanges,
+      isin: s.isin || undefined,
+      price: s.price != null ? s.price : null, // null = no live LTP feed
+      mu: s.mu != null ? s.mu : 0.12, sigma: s.sigma != null ? s.sigma : 0.22,
+      sector: s.sector, currency: s.currency, master: true,
+    };
+    EXTRA_STOCKS.set(entry.symbol, entry);
+    return entry;
+  }
+
+  function registerScheme(s) {
+    if (!s || !s.code) return null;
+    const cat = (s.category || 'equity').toLowerCase();
+    const def = MF_DEFAULTS[cat] || MF_DEFAULTS.other;
+    const entry = {
+      code: s.code, name: s.name || s.code, amc: s.amc || '',
+      category: cat, sub: s.sub || (s.plan ? `${s.plan} · ${s.option || ''}` : ''),
+      plan: s.plan, option: s.option, isin: s.isin || undefined,
+      nav: s.nav != null ? s.nav : null, navDate: s.navDate || null,
+      mu: s.mu != null ? s.mu : def.mu, sigma: s.sigma != null ? s.sigma : def.sigma,
+      elss: s.elss != null ? s.elss : /\belss\b|tax saver/i.test(s.name || ''),
+      exactNav: true, master: true,
+    };
+    EXTRA_SCHEMES.set(entry.code, entry);
+    return entry;
+  }
+
   // ---------- public API ----------
-  function searchStocks(q) {
+  function localStockSearch(q) {
     q = (q || '').trim().toLowerCase();
     if (!q) return STOCKS.slice(0, 8);
     return STOCKS.filter(s => s.symbol.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)).slice(0, 8);
   }
-  function getStock(symbol) { return STOCKS.find(s => s.symbol === symbol) || null; }
+  async function searchStocks(q) {
+    const trimmed = (q || '').trim();
+    const supa = typeof globalThis !== 'undefined' ? globalThis.Supa : null;
+    if (trimmed && supa && supa.client) {
+      try {
+        const { data, error } = await supa.client.rpc('search_equity', { q: trimmed, max_results: 10 });
+        if (!error && Array.isArray(data) && data.length) {
+          return data.map(r => {
+            const mock = STOCKS.find(s => s.symbol === r.symbol);
+            if (mock) return mock; // demo tickers keep their simulated LTP
+            return registerStock({ symbol: r.symbol, name: r.name, isin: r.isin, exchanges: r.exchanges });
+          });
+        }
+      } catch (e) { console.error('search_equity failed — falling back to built-in list', e); }
+    }
+    return localStockSearch(q);
+  }
+  function getStock(symbol) { return STOCKS.find(s => s.symbol === symbol) || EXTRA_STOCKS.get(symbol) || null; }
 
-  function searchSchemes(q) {
+  function localSchemeSearch(q) {
     q = (q || '').trim().toLowerCase();
     if (!q) return MF_SCHEMES.slice(0, 8);
     return MF_SCHEMES.filter(s => s.name.toLowerCase().includes(q) || s.code.includes(q) || s.amc.toLowerCase().includes(q)).slice(0, 8);
   }
-  function getScheme(code) { return MF_SCHEMES.find(s => s.code === code) || null; }
-  // Regular plans carry a higher TER → slightly lower NAV & expected return
+  async function searchSchemes(q) {
+    const trimmed = (q || '').trim();
+    const supa = typeof globalThis !== 'undefined' ? globalThis.Supa : null;
+    if (trimmed && supa && supa.client) {
+      try {
+        const { data, error } = await supa.client.rpc('search_mf', { q: trimmed, max_results: 10 });
+        if (!error && Array.isArray(data) && data.length) {
+          return data.map(r => registerScheme({
+            code: r.scheme_code, name: r.name, amc: r.amc, category: r.category,
+            plan: r.plan, option: r.option, isin: r.isin,
+            nav: r.nav != null ? Number(r.nav) : null, navDate: r.nav_date,
+          }));
+        }
+      } catch (e) { console.error('search_mf failed — falling back to built-in list', e); }
+    }
+    return localSchemeSearch(q);
+  }
+  function getScheme(code) { return MF_SCHEMES.find(s => s.code === code) || EXTRA_SCHEMES.get(code) || null; }
+  // Master schemes carry the exact AMFI NAV for their own plan; the
+  // Regular haircut only applies to the built-in simulated schemes.
   function schemeNav(code, plan) {
     const s = getScheme(code);
     if (!s) return null;
+    if (s.exactNav) return s.nav;
     return plan === 'Regular' ? s.nav * 0.94 : s.nav;
+  }
+
+  // Refresh quotes for securities the user actually holds (decoupled from
+  // search): real AMFI NAVs for held schemes; identity rows for held
+  // master equities/tickers so lookups resolve after a reload.
+  async function loadHeldQuotes(assets) {
+    const supa = typeof globalThis !== 'undefined' ? globalThis.Supa : null;
+    if (!supa || !supa.client || !Array.isArray(assets)) return 0;
+    const codes = [...new Set(assets.filter(a => a.type === 'mf' && a.data && a.data.schemeCode)
+      .map(a => a.data.schemeCode).filter(c => !MF_SCHEMES.some(s => s.code === c)))];
+    const symbols = [...new Set(assets.flatMap(a => {
+      const d = a.data || {};
+      if (a.type === 'equity' && d.symbol) return [d.symbol];
+      if (a.type === 'esop' && d.ticker) return [d.ticker];
+      return [];
+    }).filter(sym => !STOCKS.some(s => s.symbol === sym)))];
+    let n = 0;
+    try {
+      if (codes.length) {
+        const { data } = await supa.client.from('mf_master')
+          .select('scheme_code,name,amc,category,plan,option,isin,nav,nav_date').in('scheme_code', codes);
+        for (const r of data || []) {
+          registerScheme({ code: r.scheme_code, name: r.name, amc: r.amc, category: r.category,
+            plan: r.plan, option: r.option, isin: r.isin,
+            nav: r.nav != null ? Number(r.nav) : null, navDate: r.nav_date });
+          n++;
+        }
+      }
+      if (symbols.length) {
+        const { data } = await supa.client.from('equity_master')
+          .select('exchange,symbol,name,isin,series').in('symbol', symbols);
+        // NSE listing wins when a symbol exists on both exchanges
+        const rows = (data || []).sort((a, b) => (a.exchange === 'NSE' ? -1 : 1) - (b.exchange === 'NSE' ? -1 : 1));
+        for (const r of rows) {
+          if (!EXTRA_STOCKS.has(r.symbol)) { registerStock({ symbol: r.symbol, name: r.name, isin: r.isin, exchange: r.exchange }); n++; }
+        }
+      }
+    } catch (e) { console.error('loadHeldQuotes failed — holdings fall back to stored values', e); }
+    return n;
   }
 
   function searchCoins(q) {
@@ -221,6 +346,7 @@ const Market = (() => {
     metalRate, purityFactor, getGoldUnit,
     dayChangePct, priceHistory,
     loadLiveRates, rateInfo, rateChip, rateNoteText,
+    registerStock, registerScheme, loadHeldQuotes,
   };
 })();
 

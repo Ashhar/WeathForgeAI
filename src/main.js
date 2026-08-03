@@ -17,6 +17,7 @@ import '../js/auth.js';
 import '../js/insights.js';
 import '../js/charts.js';
 import '../js/import.js';
+import '../js/ai-import.js';
 import '../js/forms.js';
 import '../js/views.js';
 import '../js/pdf-font.js';

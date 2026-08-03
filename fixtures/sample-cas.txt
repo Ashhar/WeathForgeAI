@@ -1,0 +1,41 @@
+CAMS CONSOLIDATED ACCOUNT STATEMENT
+Computer Age Management Services Limited
+Statement Period: 01-Jan-2025 to 31-Jul-2025
+
+======================================
+HDFC Mutual Fund
+
+Folio No: 12345678/90
+
+Scheme: HDFC Flexi Cap Fund - Direct Plan - Growth
+ISIN: INF179KA1MN0
+Closing Units: 150.500
+Closing NAV: ₹142.10
+Closing Value: ₹21,386.05
+
+======================================
+ICICI Prudential Mutual Fund
+
+Folio No: 98765432/10
+
+Scheme: ICICI Prudential Bluechip Fund - Direct Plan - Growth
+Scheme Code: 120503
+ISIN: INF109K01LV9
+Closing Units: 85.250
+Closing NAV: ₹89.45
+Closing Value: ₹7,625.61
+
+======================================
+Axis Mutual Fund
+
+Folio No: 11223344/55
+
+Scheme: Axis Small Cap Fund - Regular Plan - Growth
+ISIN: INF846K01EW2
+Closing Units: 50.000
+Closing NAV: ₹75.20
+Closing Value: ₹3,760.00
+
+======================================
+
+Total Portfolio Value: ₹32,771.66
