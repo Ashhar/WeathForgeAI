@@ -10,9 +10,10 @@
     "test": "node tests/run-tests.js"
   },
   "dependencies": {
+    "@supabase/cli": "^1.0.0",
     "@supabase/supabase-js": "^2.45.0",
-    "jspdf": "^2.5.2",
-    "jspdf-autotable": "^3.8.4"
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8"
   },
   "devDependencies": {
     "vite": "^6.0.0"

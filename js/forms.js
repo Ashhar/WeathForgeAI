@@ -112,8 +112,21 @@ const Forms = (() => {
         });
       });
     }
-    inp.addEventListener('input', () => { inp.dataset.key = ''; show(searchFn(inp.value)); });
-    inp.addEventListener('focus', () => show(searchFn(inp.value)));
+    // search may be async (cloud master search); guard against stale results
+    let seq = 0, debounce = null;
+    const run = async () => {
+      const my = ++seq;
+      try {
+        const items = await Promise.resolve(searchFn(inp.value));
+        if (my === seq && document.getElementById(id) === inp) show(items || []);
+      } catch (e) { /* search failed — keep the list as-is */ }
+    };
+    inp.addEventListener('input', () => {
+      inp.dataset.key = '';
+      clearTimeout(debounce);
+      debounce = setTimeout(run, 180);
+    });
+    inp.addEventListener('focus', run);
     inp.addEventListener('blur', () => setTimeout(() => { list.style.display = 'none'; }, 150));
   }
 
@@ -287,10 +300,16 @@ const Forms = (() => {
       },
       wire(a) {
         wireAc('f_symbol', Market.searchStocks,
-          s => `<div><div class="ac-name">${s.symbol}</div><div class="ac-sub">${s.name} · ${s.exchange}</div></div><div class="ac-price">${s.currency === 'USD' ? '$' : '₹'}${s.price.toLocaleString('en-IN')}</div>`,
+          s => `<div><div class="ac-name">${s.symbol}</div><div class="ac-sub">${esc(s.name)} · ${esc(s.exchange)}</div></div><div class="ac-price">${s.price != null ? `${s.currency === 'USD' ? '$' : '₹'}${s.price.toLocaleString('en-IN')}` : `<span class="dim">${esc(s.exchange)}</span>`}</div>`,
           (s, inp) => {
             inp.value = s.symbol; inp.dataset.key = s.symbol;
-            setHint('f_symbol', `${s.name} · ${s.exchange} · LTP ${s.currency === 'USD' ? '$' : '₹'}${s.price.toLocaleString('en-IN')}${s.currency === 'USD' ? ` (FX @ ₹${Market.FX.USDINR}/$${Market.rateNoteText('USDINR') ? ' · ' + Market.rateNoteText('USDINR') : ''})` : ''}`);
+            if (s.price != null) {
+              setHint('f_symbol', `${s.name} · ${s.exchange} · LTP ${s.currency === 'USD' ? '$' : '₹'}${s.price.toLocaleString('en-IN')}${s.currency === 'USD' ? ` (FX @ ₹${Market.FX.USDINR}/$${Market.rateNoteText('USDINR') ? ' · ' + Market.rateNoteText('USDINR') : ''})` : ''}`);
+            } else {
+              setHint('f_symbol', `${s.name} · listed on ${s.exchange} — no live LTP feed yet, valued at your average cost until one is integrated.`);
+            }
+            const isinEl = $('f_isin');
+            if (s.isin && isinEl && !isinEl.value) isinEl.value = s.isin;
             setErr('f_symbol', null);
           });
         const derive = src => {
@@ -309,7 +328,7 @@ const Forms = (() => {
         const errors = [];
         const symbol = $('f_symbol').dataset.key || val('f_symbol').toUpperCase();
         if (!symbol) { setErr('f_symbol', 'Pick a stock from search'); errors.push('symbol'); } else setErr('f_symbol', null);
-        if (symbol && !Market.getStock(symbol)) { setErr('f_symbol', 'Unknown symbol — pick one from the list'); errors.push('symbol'); }
+        if (symbol && !Market.getStock(symbol)) { setErr('f_symbol', 'Unknown symbol — pick one from the search results'); errors.push('symbol'); }
         const quantity = num('f_qty');
         if (!quantity || quantity <= 0) { setErr('f_qty', 'Quantity is required'); errors.push('qty'); } else setErr('f_qty', null);
         const date = val('f_date');
@@ -317,8 +336,14 @@ const Forms = (() => {
         const avgPrice = num('f_avg'), totalInvested = num('f_total');
         if (avgPrice == null && totalInvested == null) { setErr('f_avg', 'Enter average buy price or total invested'); errors.push('cost'); } else setErr('f_avg', null);
         const lots = collectLots();
+        // master-listed symbols have no LTP feed yet — freeze at avg cost
+        // so valuation never collapses to zero (store falls back to lastPrice)
+        const stk = Market.getStock(symbol);
+        const lastPrice = stk && stk.price != null ? undefined
+          : (avgPrice != null ? avgPrice : (totalInvested && quantity ? totalInvested / quantity : undefined));
         return { errors, acquiredOn: date, data: {
           symbol, quantity, avgPrice, totalInvested,
+          lastPrice,
           lots: lots.length ? lots : undefined,
           isin: val('f_isin') || undefined,
           dividends: num('f_dividends') || undefined,
@@ -360,10 +385,14 @@ const Forms = (() => {
       },
       wire(a) {
         wireAc('f_scheme', Market.searchSchemes,
-          s => `<div><div class="ac-name">${s.name}</div><div class="ac-sub">${s.amc} · ${s.sub} · ${s.code}</div></div><div class="ac-price">₹${s.nav.toLocaleString('en-IN')}</div>`,
+          s => `<div><div class="ac-name">${esc(s.name)}</div><div class="ac-sub">${esc(s.amc)} · ${esc(s.sub || s.category)} · ${s.code}</div></div><div class="ac-price">${s.nav != null ? `₹${s.nav.toLocaleString('en-IN')}` : ''}</div>`,
           (s, inp) => {
             inp.value = s.name; inp.dataset.key = s.code;
-            setHint('f_scheme', `${s.amc} · ${s.sub} (${s.category}) · NAV ₹${s.nav}${s.elss ? ' · ELSS 3-yr lock-in' : ''}`);
+            // master schemes carry their plan/option in the scheme itself —
+            // mirror it onto the toggles so the variants read consistently
+            if (s.master && s.plan) { const el = $('f_plan'); if (el) { el.dataset.value = s.plan; el.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === s.plan)); } }
+            if (s.master && s.option) { const el = $('f_option'); if (el) { el.dataset.value = s.option; el.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === s.option)); } }
+            setHint('f_scheme', `${s.amc} · ${s.sub || s.category}${s.master ? '' : ` (${s.category})`} · NAV ₹${s.nav != null ? s.nav : '—'}${s.navDate ? ` (as of ${s.navDate})` : ''}${s.elss ? ' · ELSS 3-yr lock-in' : ''}`);
             setErr('f_scheme', null);
             derive('any');
           });
@@ -397,9 +426,14 @@ const Forms = (() => {
         if (u == null && amount != null && avgNav) u = amount / avgNav;
         if (invested == null && u != null && avgNav) invested = u * avgNav;
         if (u == null) { setErr('f_units', 'Cannot derive units — enter units, or amount + avg NAV'); errors.push('units'); }
+        // remember the scheme's name + latest NAV so the holding stays
+        // valued and labelled after a reload even without the master
+        const sch = Market.getScheme(code);
         return { errors, acquiredOn: date, data: {
           schemeCode: code, plan: segVal('f_plan'), option: segVal('f_option'),
           units: u, avgNav: avgNav || (invested && u ? invested / u : undefined), totalInvested: invested,
+          schemeName: sch ? sch.name : undefined,
+          lastNav: Market.schemeNav(code, segVal('f_plan')) || avgNav || undefined,
           sipOngoing: checked('f_sip'), sipAmount: num('f_sipamt') || undefined, sipFreq: val('f_sipfreq') || undefined,
           lots: lots.length ? lots : undefined,
           folio: val('f_folio') || undefined,
@@ -1067,10 +1101,12 @@ const Forms = (() => {
       },
       wire() {
         wireAc('f_ticker', Market.searchStocks,
-          s => `<div><div class="ac-name">${s.symbol}</div><div class="ac-sub">${s.name} · ${s.exchange}</div></div><div class="ac-price">${s.currency === 'USD' ? '$' : '₹'}${s.price.toLocaleString('en-IN')}</div>`,
+          s => `<div><div class="ac-name">${s.symbol}</div><div class="ac-sub">${esc(s.name)} · ${esc(s.exchange)}</div></div><div class="ac-price">${s.price != null ? `${s.currency === 'USD' ? '$' : '₹'}${s.price.toLocaleString('en-IN')}` : `<span class="dim">${esc(s.exchange)}</span>`}</div>`,
           (s, inp) => {
             inp.value = s.symbol; inp.dataset.key = s.symbol;
-            setHint('f_ticker', `${s.name} · ${s.currency === 'USD' ? '$' : '₹'}${s.price.toLocaleString('en-IN')} live`);
+            setHint('f_ticker', s.price != null
+              ? `${s.name} · ${s.currency === 'USD' ? '$' : '₹'}${s.price.toLocaleString('en-IN')} live`
+              : `${s.name} · listed on ${s.exchange} — no live feed yet, enter the share price below.`);
           });
         const preview = () => {
           const start = val('f_veststart'), units = num('f_units'), cliff = num('f_cliff'), dur = num('f_duration');

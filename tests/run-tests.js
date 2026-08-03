@@ -277,6 +277,33 @@ const noReq = Importer.importRows('equity', 'symbol,avg_price\nRELIANCE,2450');
 ok(noReq.assets.length === 0 && /missing required/.test(noReq.errors[0].message), 'header missing required columns is a clear error');
 ok(Importer.importRows('equity', '').errors.length === 1, 'empty input reports an error instead of silence');
 
+// ---------- security masters (P0-3) ----------
+section('Security masters');
+// local mode: async search falls back to the built-in lists
+Market.searchStocks('reliance').then(r => {
+  ok(r.length === 1 && r[0].symbol === 'RELIANCE', 'local-mode stock search falls back to the built-in list');
+});
+Market.searchSchemes('parag').then(r => {
+  ok(r.length === 1 && r[0].code === '122639', 'local-mode scheme search falls back to the built-in list');
+});
+// registered master securities resolve through the same lookups
+Market.registerStock({ symbol: 'KPEL', name: 'K.P. Energy Limited', isin: 'INE127T01013', exchanges: ['BSE', 'NSE'] });
+const kpel = Market.getStock('KPEL');
+ok(kpel && kpel.master === true && kpel.price === null, 'registered master stock resolves with no LTP feed (price null)');
+const eqNoFeed = Store.valuation({ id: 'x1', type: 'equity', acquiredOn: '2024-01-01', sharePct: 100, data: { symbol: 'KPEL', quantity: 100, avgPrice: 80, lastPrice: 80 } });
+approx(eqNoFeed.currentValue, 8000, 1e-9, 'feed-less master equity values at lastPrice, not zero');
+ok(eqNoFeed.dayChangePct == null, 'feed-less master equity has no fake day change');
+Market.registerScheme({ code: '118876', name: 'Taurus Ethical Fund - Direct Plan - Growth', amc: 'Taurus Mutual Fund', category: 'equity', plan: 'Direct', option: 'Growth', nav: 148.46, navDate: '2026-07-31' });
+ok(Market.getScheme('118876').exactNav === true, 'registered master scheme is exact-NAV');
+approx(Market.schemeNav('118876', 'Regular'), 148.46, 1e-9, 'exact-NAV scheme skips the simulated Regular haircut');
+approx(Market.schemeNav('122639', 'Regular'), 92.18 * 0.94, 1e-9, 'built-in schemes keep the simulated Regular haircut');
+const mfMaster = Store.valuation({ id: 'x2', type: 'mf', acquiredOn: '2023-01-01', sharePct: 100, data: { schemeCode: '118876', plan: 'Direct', option: 'Growth', units: 100, avgNav: 100, totalInvested: 10000 } });
+approx(mfMaster.currentValue, 14846, 1e-9, 'master scheme values at the real AMFI NAV');
+ok(mfMaster.dayChangePct == null, 'master scheme has no simulated day change');
+// import path resolves registered master securities
+const masterImp = Importer.importRows('mf', 'scheme_code,units,avg_nav,date\n118876,100,100,2023-01-01');
+ok(masterImp.assets.length === 1 && masterImp.assets[0].data.lastNav === 148.46, 'CSV import maps a master scheme with its real NAV');
+
 // ---------- live market rates (P0-1) ----------
 section('Live market rates');
 ok(Market.rateInfo('gold').live === false, 'rates are simulated by default (no cloud client)');

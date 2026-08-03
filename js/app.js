@@ -532,8 +532,12 @@ const UI = (() => {
     if (Auth.enabled()) {
       await Auth.init();
       // live rates load alongside portfolio data so the first render
-      // (and its snapshot) already uses current gold/silver/FX
-      if (Auth.session) await Promise.all([Cloud.loadAll(), Market.loadLiveRates()]);
+      // (and its snapshot) already uses current gold/silver/FX; held
+      // master securities then get their identities + real NAVs
+      if (Auth.session) {
+        await Promise.all([Cloud.loadAll(), Market.loadLiveRates()]);
+        await Market.loadHeldQuotes(Store.all());
+      }
     } else {
       Store.load();
     }
