@@ -148,6 +148,60 @@ const Importer = (() => {
       },
     },
 
+    mf_tickertape: {
+      doc: 'TickerTape mutual fund export (uses fund names instead of codes).',
+      example: 'Fund Name,Plan Type,Option Type,Units,Invested Amt ₹,Invested Since\nDSP Small Cap Fund,Direct,Growth,313.51,49997.48,2023-10-12',
+      columns: [
+        col('fund_name', 'Fund Name', true, ['name', 'scheme_name']),
+        col('units', 'Units', true, []),
+        col('invested_amt', 'Invested Amt ₹', false, ['invested_amt_rs', 'invested', 'amount']),
+        col('invested_since', 'Invested Since', true, ['date', 'acquired']),
+        col('plan_type', 'Plan Type', false, ['plan']),
+        col('option_type', 'Option Type', false, ['option']),
+        col('nav', 'NAV ₹', false, ['nav_rs']),
+      ],
+      mapRow(o, err) {
+        const fundName = String(o.fund_name || '').trim();
+
+        // Skip "Total" row or empty rows
+        if (!fundName || /^total$/i.test(fundName)) return err('skipping summary row');
+
+        // Skip header rows from TickerTape (they have multiple header rows)
+        if (/mutual\s*funds?\s*holdings?/i.test(fundName) || /^visit:/i.test(fundName)) {
+          return err('skipping header row');
+        }
+
+        // Try to find scheme by fuzzy name match
+        const sch = Market.findSchemeByName(fundName);
+        if (!sch) return err(`cannot match fund "${fundName}" — try adding AMFI scheme code manually`);
+
+        const date = normalizeDate(o.invested_since);
+        if (!date) return err(`invalid Invested Since date "${o.invested_since || ''}"`);
+
+        const units = parseNumber(o.units);
+        if (!units || units <= 0) return err('Units must be a positive number');
+
+        const invested = parseNumber(o.invested_amt);
+        const nav = parseNumber(o.nav);
+        const avgNav = invested && units ? invested / units : nav;
+
+        if (!avgNav) return err('need Invested Amt or NAV to calculate average cost');
+
+        const plan = /^reg/i.test(o.plan_type || '') ? 'Regular' : 'Direct';
+        const option = /^idcw|div/i.test(o.option_type || '') ? 'IDCW' : 'Growth';
+
+        return { acquiredOn: date, data: {
+          schemeCode: sch.code,
+          schemeName: sch.name,
+          plan, option,
+          units,
+          avgNav,
+          totalInvested: invested || (units * avgNav),
+          lastNav: Market.schemeNav(sch.code, plan) || nav || avgNav,
+        } };
+      },
+    },
+
     crypto: {
       doc: 'One coin holding per row. currency: USD/INR (purchase currency).',
       example: 'coin,quantity,avg_price,date,currency\nBTC,0.05,52000,2023-11-20,USD',
@@ -469,14 +523,30 @@ const Importer = (() => {
     }
   }
 
+  // Auto-detect TickerTape MF format
+  function detectTickerTapeFormat(rows) {
+    if (rows.length < 2) return false;
+    const header = rows[0].map(c => normKey(c));
+    // TickerTape MF export has: fund_name, amc_name, category, plan_type, option_type, nav, units, invested_amt, invested_since
+    const tickerTapeMarkers = ['fund_name', 'plan_type', 'option_type', 'invested_amt'];
+    const matches = tickerTapeMarkers.filter(m => header.includes(m)).length;
+    return matches >= 3; // if 3+ markers present, it's TickerTape format
+  }
+
   // ---------- rows → assets ----------
   // Header row is detected when ≥2 cells match column keys/aliases;
   // otherwise columns are positional in schema order.
   function importRows(type, text) {
-    const schema = SCHEMAS[type];
+    let schema = SCHEMAS[type];
     if (!schema) return { assets: [], errors: [{ row: 0, message: `no CSV import for type "${type}"` }], total: 0 };
     const rows = parseCsv(text || '');
     if (!rows.length) return { assets: [], errors: [{ row: 0, message: 'no rows found — paste CSV or choose a file' }], total: 0 };
+
+    // Auto-detect TickerTape format for MF imports
+    if (type === 'mf' && detectTickerTapeFormat(rows)) {
+      schema = SCHEMAS.mf_tickertape;
+      type = 'mf_tickertape'; // switch type for rest of processing
+    }
 
     const keyFor = cell => {
       const n = normKey(cell);
@@ -523,16 +593,41 @@ const Importer = (() => {
     if (!supa || !supa.client) return;
     const cells = parseCsv(text || '').flat();
     try {
-      if (type === 'mf') {
+      if (type === 'mf' || type === 'mf_tickertape') {
         const codes = [...new Set(cells.filter(c => /^\d{5,7}$/.test(c)))].filter(c => !Market.getScheme(c));
-        if (!codes.length) return;
-        const { data } = await supa.client.from('mf_master')
-          .select('scheme_code,name,amc,category,plan,option,isin,nav,nav_date').in('scheme_code', codes);
-        (data || []).forEach(r => Market.registerScheme({
-          code: r.scheme_code, name: r.name, amc: r.amc, category: r.category,
-          plan: r.plan, option: r.option, isin: r.isin,
-          nav: r.nav != null ? Number(r.nav) : null, navDate: r.nav_date,
-        }));
+        if (codes.length > 0) {
+          const { data } = await supa.client.from('mf_master')
+            .select('scheme_code,name,amc,category,plan,option,isin,nav,nav_date').in('scheme_code', codes);
+          (data || []).forEach(r => Market.registerScheme({
+            code: r.scheme_code, name: r.name, amc: r.amc, category: r.category,
+            plan: r.plan, option: r.option, isin: r.isin,
+            nav: r.nav != null ? Number(r.nav) : null, navDate: r.nav_date,
+          }));
+        }
+
+        // For TickerTape format, prefetch by fund names using search
+        if (type === 'mf_tickertape') {
+          const rows = parseCsv(text || '');
+          if (rows.length > 1) {
+            // Find fund name column (first column after skipping headers)
+            for (let i = 1; i < Math.min(rows.length, 20); i++) {
+              const fundName = rows[i][0];
+              if (fundName && fundName.length > 5 && !/^total$/i.test(fundName)) {
+                try {
+                  const { data } = await supa.client.rpc('search_mf', { q: fundName.slice(0, 50), max_results: 1 });
+                  if (data && data.length > 0) {
+                    Market.registerScheme({
+                      code: data[0].scheme_code, name: data[0].name, amc: data[0].amc,
+                      category: data[0].category, plan: data[0].plan, option: data[0].option,
+                      isin: data[0].isin, nav: data[0].nav != null ? Number(data[0].nav) : null,
+                      navDate: data[0].nav_date,
+                    });
+                  }
+                } catch (e) { /* skip if search fails */ }
+              }
+            }
+          }
+        }
       } else if (type === 'equity' || type === 'esop') {
         const syms = [...new Set(cells.map(c => c.toUpperCase()).filter(c => /^[A-Z][A-Z0-9&-]{1,19}$/.test(c)))]
           .filter(s => !Market.getStock(s));

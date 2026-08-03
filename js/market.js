@@ -338,10 +338,49 @@ const Market = (() => {
     return `<span class="chip fresh" title="Source: ${String(info.source).replace(/"/g, '&quot;')}">🕐 updated ${rateAgeText(info.fetchedAt)}</span>`;
   }
 
+  // Fuzzy name match for scheme — used by TickerTape import
+  function findSchemeByName(name) {
+    if (!name) return null;
+    const normalized = name.toLowerCase().trim();
+
+    // Try exact match first
+    const exactMatch = [...MF_SCHEMES, ...EXTRA_SCHEMES.values()].find(s =>
+      s.name.toLowerCase() === normalized
+    );
+    if (exactMatch) return exactMatch;
+
+    // Try partial match (fund name contains the search term or vice versa)
+    const partialMatch = [...MF_SCHEMES, ...EXTRA_SCHEMES.values()].find(s => {
+      const schemeName = s.name.toLowerCase();
+      return schemeName.includes(normalized) || normalized.includes(schemeName);
+    });
+    if (partialMatch) return partialMatch;
+
+    // Try fuzzy match (remove common words and match key terms)
+    const stripCommon = str => str
+      .replace(/\b(fund|direct|growth|regular|idcw|dividend)\b/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+
+    const keyTerms = stripCommon(normalized).split(' ').filter(t => t.length > 2);
+    if (keyTerms.length === 0) return null;
+
+    const fuzzyMatch = [...MF_SCHEMES, ...EXTRA_SCHEMES.values()].find(s => {
+      const schemeTerms = stripCommon(s.name).split(' ').filter(t => t.length > 2);
+      const matchCount = keyTerms.filter(term =>
+        schemeTerms.some(st => st.includes(term) || term.includes(st))
+      ).length;
+      return matchCount >= Math.min(2, keyTerms.length); // at least 2 terms match
+    });
+
+    return fuzzyMatch || null;
+  }
+
   return {
     FX, PURITY, GOLD_UNITS, METALS,
     searchStocks, getStock,
-    searchSchemes, getScheme, schemeNav,
+    searchSchemes, getScheme, schemeNav, findSchemeByName,
     searchCoins, getCoin,
     metalRate, purityFactor, getGoldUnit,
     dayChangePct, priceHistory,
