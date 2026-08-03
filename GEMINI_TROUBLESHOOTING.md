@@ -283,6 +283,58 @@ TypeError: NetworkError when attempting to fetch resource
 
 ---
 
+## How Model Discovery Works (New Feature!)
+
+**As of commit `800b7f2`**, the app automatically discovers the best Gemini model before each import session.
+
+### Discovery Process
+
+1. **First import of the session:**
+   - App calls `https://generativelanguage.googleapis.com/v1beta/models?key=YOUR_KEY`
+   - Gets list of all available models
+   - Filters for models supporting `generateContent`
+   - Prioritizes: flash-latest > flash > pro-latest > pro
+   - Caches the selected model
+
+2. **Subsequent imports:**
+   - Uses cached model (no repeated API calls)
+   - Cache lasts until browser refresh
+
+3. **If discovery fails:**
+   - Falls back to hardcoded list: `['gemini-2.0-flash-exp', 'gemini-1.5-flash', 'gemini-pro']`
+   - Still tries each until one works
+
+### View Selected Model
+
+Open browser console (F12) during import:
+
+```
+[AI Import] Using model: gemini-2.0-flash-exp
+```
+
+This tells you which model was auto-selected.
+
+### Benefits
+
+✅ **Future-proof**: Works with Gemini 3.5, 4.0, etc. automatically  
+✅ **Always latest**: Uses newest model without code updates  
+✅ **No manual configuration**: Just works  
+✅ **Fallback safe**: Hardcoded list if discovery fails  
+
+### Manual Override (Advanced)
+
+If you want to force a specific model, edit `js/ai-import.js`:
+
+```javascript
+async function discoverModel() {
+  return 'gemini-2.0-flash-exp'; // Force this model
+}
+```
+
+But this is rarely needed - auto-discovery is recommended.
+
+---
+
 ## Debugging Steps
 
 ### 1. Check Environment Variables
@@ -358,12 +410,16 @@ Gemini API has changed model names over time:
 
 | Date | Primary Model Name | Status |
 |------|-------------------|--------|
-| 2024-02 | `gemini-pro` | ✅ Works |
-| 2024-05 | `gemini-1.5-flash` | ✅ Works |
-| 2024-12 | `gemini-1.5-flash-latest` | ✅ **Current** |
-| Future | TBD | App auto-tries fallbacks |
+| 2024-02 | `gemini-pro` | ⚠️ Deprecated |
+| 2024-05 | `gemini-1.5-flash` | ⚠️ Deprecated |
+| 2024-12 | `gemini-1.5-flash-latest` | ⚠️ Deprecated |
+| 2025+ | `gemini-2.0-flash-exp` | ✅ Current |
+| 2026+ | `gemini-3.5-*` | ✅ **Expected** |
+| Future | Auto-discovered | ✅ App discovers dynamically |
 
-The app now tries multiple names automatically, so updates to Gemini API shouldn't break functionality.
+**As of commit `800b7f2`**, the app uses **dynamic model discovery** via the `listModels` API. It automatically finds and uses the latest available Gemini model without needing code updates.
+
+The app will work with Gemini 2.0, 3.5, 4.0, and beyond without any changes!
 
 ---
 

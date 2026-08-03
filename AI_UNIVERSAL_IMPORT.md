@@ -428,11 +428,26 @@ The AI is prompted to extract:
 
 ### Model Configuration
 
+**Dynamic Model Discovery:**
+
+The app automatically discovers the best available Gemini model at runtime by calling the `listModels` API. This ensures you always use the latest models without code updates.
+
+**Model Selection Priority:**
+1. `gemini-*-flash-*-latest` (e.g., `gemini-2.0-flash-exp`, `gemini-3.5-flash-latest`)
+2. `gemini-*-flash` (stable flash versions)
+3. `gemini-*-pro-*-latest` (latest pro versions)
+4. `gemini-*-pro` (stable pro)
+5. Any available Gemini model
+6. Fallback: `['gemini-2.0-flash-exp', 'gemini-1.5-flash', 'gemini-pro']`
+
+**Generation Config:**
 ```javascript
-model: 'gemini-1.5-flash',
 temperature: 0.1,  // Low temperature for deterministic output
-maxOutputTokens: 8192
+maxOutputTokens: 8192  // CSV extraction, 4096 for PDF
 ```
+
+**Caching:**
+The discovered model is cached for the session, so the listModels API is only called once per session (not per import).
 
 ## Questions?
 
@@ -444,5 +459,6 @@ For issues or feature requests:
 ---
 
 **Last Updated:** 2026-08-03  
-**AI Model:** Google Gemini 1.5 Flash  
+**AI Model:** Dynamic (auto-discovers latest Gemini model: 2.0+, 3.5+, etc.)  
+**Model Discovery:** Automatic via listModels API (commit `800b7f2`)  
 **Tested With:** TickerTape (MF + Equity), Zerodha, Groww, CAMS PDF
