@@ -11,11 +11,12 @@
 
 create table if not exists public.import_jobs (
   id         uuid primary key default gen_random_uuid(),
-  user_id    uuid not null references auth.users(id) on delete cascade,
+  user_id    uuid not null default auth.uid() references auth.users(id) on delete cascade,
 
   -- provenance
   filename      text not null,             -- original uploaded file name
   file_type     text not null,             -- 'cas_pdf' | 'broker_pdf' | 'spreadsheet' | 'image'
+  asset_type    text,                      -- 'equity' | 'mf' | 'crypto' | 'fd' | 'gold' | 'other'
   input_format  text,                      -- detected format detail (e.g., 'CAMS', 'KFintech', 'Zerodha')
   uploaded_at   timestamptz not null default now(),
 

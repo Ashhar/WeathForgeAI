@@ -379,7 +379,9 @@ Rules:
             symbol: { type: ['string', 'null'], description: 'Stock ticker/symbol (for equity)' },
             quantity: { type: ['number', 'null'], description: 'Number of shares/units' },
             avg_price: { type: ['number', 'null'], description: 'Average buy price per unit' },
+            current_price: { type: ['number', 'null'], description: 'Current/last traded price (LTP)' },
             total_invested: { type: ['number', 'null'], description: 'Total amount invested' },
+            current_value: { type: ['number', 'null'], description: 'Current market value of the holding' },
 
             // MF fields
             scheme_name: { type: ['string', 'null'], description: 'Full mutual fund scheme name' },
@@ -424,6 +426,8 @@ Rules:
 - For stocks: extract symbol/ticker (map "Symbol"/"Stock"/"Scrip" → symbol)
 - Map quantity/shares/units → quantity or units (depending on type)
 - Map avg price/cost/NAV → avg_price or avg_nav
+- Map LTP/current price/last price → current_price
+- Map current value/market value → current_value
 - Map invested amount/total cost → total_invested
 - Convert all dates to YYYY-MM-DD (from DD-MM-YYYY, DD/MM/YYYY, or any format)
 - Skip summary rows (Total, Grand Total, etc.)
@@ -601,7 +605,10 @@ Output MUST be valid JSON only, no explanatory text.`;
         .select()
         .single();
 
-      if (error) throw new Error(`Failed to save import job: ${error.message}`);
+      if (error) {
+        console.warn('[AI Import] Could not save import job:', error.message);
+        return { ...jobData, id: crypto.randomUUID() };
+      }
       return { ...jobData, id: data.id };
     }
 
@@ -766,7 +773,7 @@ Output MUST be valid JSON only, no explanatory text.`;
               quantity: m.quantity,
               avgPrice: m.avg_price || (m.total_invested && m.quantity ? m.total_invested / m.quantity : stock.price || 100),
               totalInvested: m.total_invested || (m.quantity * (m.avg_price || stock.price || 100)),
-              lastPrice: stock.price,
+              lastPrice: m.current_price || stock.price || m.avg_price || 100,
               isin: stock.isin || undefined,
             },
             ownership: 'single',
