@@ -292,15 +292,33 @@ Rules:
             }
           }
 
-          // Priority 3: fuzzy name match
+          // Priority 3: fuzzy name match with plan/option filtering
           if (!matchedScheme && holding.scheme_name) {
+            const searchQuery = holding.scheme_name.slice(0, 50);
             const { data } = await supa.rpc('search_mf', {
-              q: holding.scheme_name.slice(0, 50),
-              max_results: 1,
+              q: searchQuery,
+              max_results: 10,
             });
             if (data && data.length > 0) {
-              matchedScheme = data[0];
-              confidence = 'medium';
+              // Filter by plan and option if available from CSV
+              const plan = (holding.plan || '').toLowerCase();
+              const option = (holding.option || '').toLowerCase();
+              let best = data[0];
+
+              if (plan || option) {
+                const filtered = data.filter(s => {
+                  const sPlan = (s.plan || s.name || '').toLowerCase();
+                  const sOption = (s.option || s.name || '').toLowerCase();
+                  const nameL = (s.name || '').toLowerCase();
+                  const planMatch = !plan || sPlan.includes(plan) || nameL.includes(plan);
+                  const optionMatch = !option || sOption.includes(option) || nameL.includes(option);
+                  return planMatch && optionMatch;
+                });
+                if (filtered.length > 0) best = filtered[0];
+              }
+
+              matchedScheme = best;
+              confidence = (plan || option) ? 'high' : 'medium';
             }
           }
         }
@@ -388,6 +406,8 @@ Rules:
             scheme_code: { type: ['string', 'null'], description: 'AMFI scheme code' },
             units: { type: ['number', 'null'], description: 'MF units held' },
             avg_nav: { type: ['number', 'null'], description: 'Average NAV' },
+            current_nav: { type: ['number', 'null'], description: 'Current/latest NAV per unit' },
+            current_value: { type: ['number', 'null'], description: 'Current market value of the holding' },
             plan: { type: ['string', 'null'], description: 'Direct or Regular' },
             option: { type: ['string', 'null'], description: 'Growth or IDCW' },
             folio: { type: ['string', 'null'], description: 'Folio number' },
@@ -416,13 +436,16 @@ Your task:
 5. Use null for missing fields
 
 Common CSV formats:
-- TickerTape: "Fund Name", "Plan Type", "Option Type", "Units", "Invested Amt ₹"
+- TickerTape: "Fund Name", "Plan Type", "Option Type", "NAV ₹", "Units", "Invested Amt ₹", "Current Value ₹"
 - Zerodha: "Symbol", "Quantity", "Average Cost", "LTP"
 - Groww: "Scheme Name", "Invested Amount", "Current Value", "Units"
 - Generic broker: any variation of stock/fund name, qty/units, price/NAV, amount, date
 
 Rules:
 - For mutual funds: extract scheme name (map "Fund Name" → scheme_name)
+- For mutual funds: map "NAV"/"NAV ₹"/current NAV → current_nav
+- For mutual funds: map "Plan Type" → plan (must be exactly "Direct" or "Regular")
+- For mutual funds: map "Option Type" → option (must be exactly "Growth" or "IDCW")
 - For stocks: extract symbol/ticker (map "Symbol"/"Stock"/"Scrip" → symbol)
 - Map quantity/shares/units → quantity or units (depending on type)
 - Map avg price/cost/NAV → avg_price or avg_nav
@@ -739,6 +762,9 @@ Output MUST be valid JSON only, no explanatory text.`;
         if (assetType === 'mf') {
           // Mutual fund import
           const scheme = m.matched_scheme;
+          const navFromCSV = m.current_nav || m.nav;
+          const lastNav = navFromCSV || scheme.nav || 100;
+          const avgNav = m.avg_nav || (m.total_invested && m.units ? m.total_invested / m.units : (m.invested && m.units ? m.invested / m.units : lastNav));
           return {
             type: 'mf',
             label: scheme.name,
@@ -750,9 +776,9 @@ Output MUST be valid JSON only, no explanatory text.`;
               plan: m.plan || scheme.plan || 'Direct',
               option: m.option || scheme.option || 'Growth',
               units: m.units,
-              avgNav: m.avg_nav || (m.invested && m.units ? m.invested / m.units : scheme.nav || 100),
-              totalInvested: m.invested || m.total_invested || (m.units * (scheme.nav || 100)),
-              lastNav: scheme.nav,
+              avgNav: avgNav,
+              totalInvested: m.total_invested || m.invested || (m.units * avgNav),
+              lastNav: lastNav,
               folio: m.folio || undefined,
             },
             ownership: 'single',
