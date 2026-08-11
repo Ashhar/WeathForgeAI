@@ -541,6 +541,7 @@ Output MUST be valid JSON only, no explanatory text.`;
     let assetType = 'mf'; // default for CAS PDFs
     const errors = [];
     let totalTokens = 0;
+    let usedModel = null;
 
     if (isCSV) {
       // Universal CSV extraction
@@ -549,6 +550,7 @@ Output MUST be valid JSON only, no explanatory text.`;
         allHoldings = result.data.holdings || [];
         assetType = result.data.asset_type || 'mf';
         totalTokens = result.tokens;
+        usedModel = result.model;
       } catch (err) {
         errors.push({ chunk: 0, error: err.message });
         throw new Error(`CSV extraction failed: ${err.message}`);
@@ -562,6 +564,7 @@ Output MUST be valid JSON only, no explanatory text.`;
           const result = await extractViaLLM(chunks[i]);
           allHoldings.push(...result.data.holdings);
           totalTokens += result.tokens;
+          if (!usedModel) usedModel = result.model;
         } catch (err) {
           errors.push({ chunk: i + 1, error: err.message });
         }
@@ -582,7 +585,7 @@ Output MUST be valid JSON only, no explanatory text.`;
       input_format: format,
       asset_type: assetType,
       extracted_data: { holdings: allHoldings },
-      extraction_model: MODEL,
+      extraction_model: usedModel,
       extraction_tokens: totalTokens,
       extraction_errors: errors.length > 0 ? errors : null,
       matched_holdings: matched,
