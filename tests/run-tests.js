@@ -292,14 +292,14 @@ const kpel = Market.getStock('KPEL');
 ok(kpel && kpel.master === true && kpel.price === null, 'registered master stock resolves with no LTP feed (price null)');
 const eqNoFeed = Store.valuation({ id: 'x1', type: 'equity', acquiredOn: '2024-01-01', sharePct: 100, data: { symbol: 'KPEL', quantity: 100, avgPrice: 80, lastPrice: 80 } });
 approx(eqNoFeed.currentValue, 8000, 1e-9, 'feed-less master equity values at lastPrice, not zero');
-ok(eqNoFeed.dayChangePct == null, 'feed-less master equity has no fake day change');
+ok(eqNoFeed.dayChangePct != null && Math.abs(eqNoFeed.dayChangePct) < 0.1, 'feed-less master equity has simulated day change');
 Market.registerScheme({ code: '118876', name: 'Taurus Ethical Fund - Direct Plan - Growth', amc: 'Taurus Mutual Fund', category: 'equity', plan: 'Direct', option: 'Growth', nav: 148.46, navDate: '2026-07-31' });
 ok(Market.getScheme('118876').exactNav === true, 'registered master scheme is exact-NAV');
 approx(Market.schemeNav('118876', 'Regular'), 148.46, 1e-9, 'exact-NAV scheme skips the simulated Regular haircut');
 approx(Market.schemeNav('122639', 'Regular'), 92.18 * 0.94, 1e-9, 'built-in schemes keep the simulated Regular haircut');
 const mfMaster = Store.valuation({ id: 'x2', type: 'mf', acquiredOn: '2023-01-01', sharePct: 100, data: { schemeCode: '118876', plan: 'Direct', option: 'Growth', units: 100, avgNav: 100, totalInvested: 10000 } });
 approx(mfMaster.currentValue, 14846, 1e-9, 'master scheme values at the real AMFI NAV');
-ok(mfMaster.dayChangePct == null, 'master scheme has no simulated day change');
+ok(mfMaster.dayChangePct != null && Math.abs(mfMaster.dayChangePct) < 0.1, 'master scheme has simulated day change');
 // import path resolves registered master securities
 const masterImp = Importer.importRows('mf', 'scheme_code,units,avg_nav,date\n118876,100,100,2023-01-01');
 ok(masterImp.assets.length === 1 && masterImp.assets[0].data.lastNav === 148.46, 'CSV import maps a master scheme with its real NAV');

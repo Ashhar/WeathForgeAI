@@ -259,6 +259,70 @@ const Store = (() => {
     today.netWorth = Math.round(p.netWorth);
     return out;
   }
+  // Reconstruct historical net-worth snapshots from asset acquisition dates.
+  // Uses exponential interpolation from invested cost to current value for
+  // each asset so the chart shows realistic growth from each buy date.
+  function backfillUserHistory() {
+    if (readOnly) return;
+    const assets = all();
+    if (assets.length === 0) return;
+
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    const dates = assets.map(a => a.acquiredOn).filter(Boolean).sort();
+    if (dates.length === 0) return;
+    const earliest = dates[0];
+
+    const realSnaps = state.snapshots.filter(s => !s.synthetic && s.netWorth > 0);
+    const firstRealDate = realSnaps.length ? realSnaps[0].date : todayStr;
+
+    const gapDays = (new Date(firstRealDate) - new Date(earliest)) / 86400000;
+    if (gapDays < 14) return;
+
+    // Pre-compute per-asset trajectory info
+    const trajectories = assets.map(a => {
+      const d = a.data || {};
+      const acq = a.acquiredOn;
+      if (!acq) return null;
+      const invested = d.totalInvested || d.principal || ((d.quantity || d.units || 0) * (d.avgPrice || d.avgNav || 0)) || 0;
+      if (invested <= 0) return null;
+      let current;
+      try { current = valuation(a).currentValue || 0; } catch (e) { current = invested; }
+      if (current <= 0) current = invested;
+      const totalDays = Math.max(1, (today - new Date(acq)) / 86400000);
+      const growthRatio = current / invested;
+      return { acq, invested, growthRatio, totalDays };
+    }).filter(Boolean);
+
+    if (trajectories.length === 0) return;
+
+    // Generate weekly points from earliest acquisition to first real snapshot
+    const synth = [];
+    const startDate = new Date(earliest);
+    const endDate = new Date(firstRealDate);
+    for (let d = new Date(startDate); d < endDate; d.setDate(d.getDate() + 7)) {
+      const dateStr = d.toISOString().slice(0, 10);
+      let nw = 0;
+      for (const t of trajectories) {
+        if (dateStr < t.acq) continue;
+        const elapsed = (d - new Date(t.acq)) / 86400000;
+        const frac = elapsed / t.totalDays;
+        nw += t.invested * Math.pow(t.growthRatio, frac);
+      }
+      synth.push({
+        date: dateStr,
+        totalAssets: Math.round(nw),
+        totalLiabilities: 0,
+        netWorth: Math.round(nw),
+        synthetic: true,
+      });
+    }
+
+    // Remove any old synthetic entries before merging
+    state.snapshots = state.snapshots.filter(s => !s.synthetic);
+    state.snapshots = [...synth, ...state.snapshots];
+  }
+
   function looksLikeSeed(assets) {
     const labels = new Set((assets || []).map(a => a.label));
     return labels.has('Flexi cap SIP') && labels.has('2BHK, Whitefield') && labels.has('Wedding jewellery');
@@ -407,7 +471,7 @@ const Store = (() => {
         v = (d.quantity || 0) * price * fxRate;
         invested = d.totalInvested != null ? d.totalInvested : (d.quantity || 0) * (d.avgPrice || 0) * fxRate;
         if (d.charges) invested += d.charges;
-        dayChangePct = (s && s.price != null) ? Market.dayChangePct(d.symbol, s.sigma) / 100 : null;
+        dayChangePct = s ? Market.dayChangePct(d.symbol, s.sigma) / 100 : null;
         sub = s ? `${s.exchange} · ₹${Fin.fmtQty(price * fxRate, 2)}` : d.symbol;
         if (s) { mu = s.mu; sigma = s.sigma; }
         break;
@@ -423,8 +487,7 @@ const Store = (() => {
           if (s.category === 'debt' || s.category === 'liquid') notes.push('Debt/liquid scheme — narrow projection band.');
           if (s.elss) notes.push('ELSS: 3-year lock-in per instalment.');
         }
-        // master schemes carry one real AMFI NAV — no simulated day change
-        dayChangePct = (s && !s.exactNav) ? Market.dayChangePct(d.schemeCode, s.sigma) / 200 : null;
+        dayChangePct = s ? Market.dayChangePct(d.schemeCode, s.sigma) / 200 : null;
         break;
       }
       case 'esop': {
@@ -1028,7 +1091,7 @@ const Store = (() => {
     liabilities, getLiability, addLiability, updateLiability, removeLiability,
     liabilityValuation, liabilityCurve, liabilityLinkedTo,
     valuation, projectionBand, portfolio, portfolioBand,
-    snapshots, recordSnapshot, snapshotRange, recentGrowth,
+    snapshots, recordSnapshot, snapshotRange, recentGrowth, backfillUserHistory,
     goals, getGoal, addGoal, updateGoal, removeGoal, checkGoalAchievements, goalProgress,
     setRemote, setLocalMode, setOnMutate, isReadOnly,
   };

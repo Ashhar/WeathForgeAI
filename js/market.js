@@ -88,9 +88,11 @@ const Market = (() => {
     { id: 'SGB2027',  name: 'SGB 2019-20 Series IV (2027)', price: 7850, kind: 'sgb' },
   ];
 
-  // deterministic "day change" per instrument
+  // deterministic "day change" per instrument (seeded with today's date so it
+  // actually varies day to day while staying stable within the same day)
   function dayChangePct(key, sigma) {
-    const r = mulberry32(hashSeed('day:' + key))();
+    const today = new Date().toISOString().slice(0, 10);
+    const r = mulberry32(hashSeed('day:' + today + ':' + key))();
     return (r * 2 - 1) * (sigma || 0.2) * 4; // ± few %
   }
 
