@@ -546,6 +546,7 @@ const UI = (() => {
       if (Auth.session) {
         await Promise.all([Cloud.loadAll(), Market.loadLiveRates()]);
         await Market.loadHeldQuotes(Store.all());
+        await Market.loadHeldPrices();
         Store.backfillUserHistory();
       }
     } else {

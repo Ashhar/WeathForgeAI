@@ -88,8 +88,19 @@ const Market = (() => {
     { id: 'SGB2027',  name: 'SGB 2019-20 Series IV (2027)', price: 7850, kind: 'sgb' },
   ];
 
-  // deterministic "day change" per instrument (seeded with today's date so it
-  // actually varies day to day while staying stable within the same day)
+  // Live day-change data from equity_prices table (populated by sync job)
+  const LIVE_CHANGE = new Map(); // symbol or coinId → { changePct, fetchedAt }
+
+  // Returns the live day-change as a fraction (0.0123 = +1.23%), or null if
+  // no live data exists. Callers should prefer this over the simulated path.
+  function liveChangeFraction(key) {
+    const live = LIVE_CHANGE.get(key);
+    if (live && live.changePct != null) return live.changePct / 100;
+    return null;
+  }
+
+  // Deterministic simulated day change (fallback when no live feed).
+  // Seeded with today's date so it varies daily but is stable within a day.
   function dayChangePct(key, sigma) {
     const today = new Date().toISOString().slice(0, 10);
     const r = mulberry32(hashSeed('day:' + today + ':' + key))();
@@ -301,6 +312,48 @@ const Market = (() => {
     }
   }
 
+  // ---------- live equity & crypto prices (cloud mode) ----------
+  // Reads equity_prices table written by scripts/sync-equity-ltp.mjs.
+  // Updates STOCKS/EXTRA_STOCKS with live LTP and populates LIVE_CHANGE
+  // for real day-change values. Also updates COINS with live USD prices.
+  async function loadHeldPrices() {
+    const supa = typeof globalThis !== 'undefined' ? globalThis.Supa : null;
+    if (!supa || !supa.client) return false;
+    try {
+      const { data, error } = await supa.client
+        .from('equity_prices').select('symbol,price,change_pct,prev_close,currency,source,fetched_at');
+      if (error) throw error;
+      let count = 0;
+      for (const row of data || []) {
+        const price = Number(row.price);
+        if (!(price > 0)) continue;
+
+        if (row.symbol.startsWith('crypto:')) {
+          // Crypto price update
+          const coinId = row.symbol.slice(7); // strip 'crypto:'
+          const coin = COINS.find(c => c.id === coinId);
+          if (coin) { coin.priceUSD = price; count++; }
+          if (row.change_pct != null) LIVE_CHANGE.set(coinId, { changePct: Number(row.change_pct), fetchedAt: new Date(row.fetched_at) });
+        } else {
+          // Equity price update
+          const stock = STOCKS.find(s => s.symbol === row.symbol);
+          if (stock) { stock.price = price; count++; }
+          else {
+            const extra = EXTRA_STOCKS.get(row.symbol);
+            if (extra) { extra.price = price; count++; }
+          }
+          if (row.change_pct != null) LIVE_CHANGE.set(row.symbol, { changePct: Number(row.change_pct), fetchedAt: new Date(row.fetched_at) });
+        }
+        RATE_META[row.symbol] = { live: true, fetchedAt: new Date(row.fetched_at), source: row.source || 'live feed' };
+      }
+      if (count) console.log(`[Market] Loaded ${count} live prices from equity_prices`);
+      return count > 0;
+    } catch (e) {
+      console.error('Market.loadHeldPrices failed — keeping simulated/stored prices', e);
+      return false;
+    }
+  }
+
   // { live, stale, fetchedAt, source } — simulated rates are live:false
   function rateInfo(id) {
     const meta = RATE_META[id];
@@ -385,8 +438,8 @@ const Market = (() => {
     searchSchemes, getScheme, schemeNav, findSchemeByName,
     searchCoins, getCoin,
     metalRate, purityFactor, getGoldUnit,
-    dayChangePct, priceHistory,
-    loadLiveRates, rateInfo, rateChip, rateNoteText,
+    dayChangePct, liveChangeFraction, priceHistory,
+    loadLiveRates, loadHeldPrices, rateInfo, rateChip, rateNoteText,
     registerStock, registerScheme, loadHeldQuotes,
   };
 })();

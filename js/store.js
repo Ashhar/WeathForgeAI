@@ -471,7 +471,7 @@ const Store = (() => {
         v = (d.quantity || 0) * price * fxRate;
         invested = d.totalInvested != null ? d.totalInvested : (d.quantity || 0) * (d.avgPrice || 0) * fxRate;
         if (d.charges) invested += d.charges;
-        dayChangePct = s ? Market.dayChangePct(d.symbol, s.sigma) / 100 : null;
+        dayChangePct = s ? (Market.liveChangeFraction(d.symbol) ?? Market.dayChangePct(d.symbol, s.sigma) / 100) : null;
         sub = s ? `${s.exchange} · ₹${Fin.fmtQty(price * fxRate, 2)}` : d.symbol;
         if (s) { mu = s.mu; sigma = s.sigma; }
         break;
@@ -519,7 +519,7 @@ const Store = (() => {
           notes.push('Private company — valued at your 409A/last-round price. Illiquid, assumption-based.');
         } else if (s) {
           mu = s.mu; sigma = s.sigma;
-          dayChangePct = Market.dayChangePct(d.ticker, s.sigma) / 100;
+          dayChangePct = Market.liveChangeFraction(d.ticker) ?? Market.dayChangePct(d.ticker, s.sigma) / 100;
         } else {
           mu = 0.12; sigma = 0.30;
         }
@@ -692,7 +692,7 @@ const Store = (() => {
         if (c) { mu = c.mu; sigma = c.sigma; }
         if (c && c.stable) { notes.push('Stablecoin — value ≈ pegged; projected roughly flat.'); }
         else notes.push('Crypto is extremely volatile — projection band is very wide and illustrative only.');
-        dayChangePct = c ? Market.dayChangePct(d.coinId, c.sigma) / 60 : null;
+        dayChangePct = c ? (Market.liveChangeFraction(d.coinId) ?? Market.dayChangePct(d.coinId, c.sigma) / 60) : null;
         break;
       }
       case 'other': {

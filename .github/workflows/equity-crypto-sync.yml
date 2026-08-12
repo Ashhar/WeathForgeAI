@@ -1,0 +1,25 @@
+name: Equity & crypto price sync
+
+# Equity: every 15 min Mon-Fri during IST market hours (9:00-16:00 IST = 3:30-10:30 UTC)
+# Crypto: 24/7 every 15 min
+# The script handles both — equity symbols are only fetched if users hold them.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  sync-prices:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm ci --omit=dev 2>/dev/null || npm install yahoo-finance2
+      - name: Sync equity & crypto prices
+        run: node scripts/sync-equity-ltp.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
