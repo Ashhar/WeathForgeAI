@@ -260,8 +260,8 @@ const Forms = (() => {
 
   function importBand(kind) {
     return `<div class="import-band">
-      <span>⚡ Fastest path: import from your ${kind}.</span>
-      <button type="button" class="btn sm" data-import>Import statement / CSV</button>
+      <span>🤖 Fastest path: AI-powered import from your ${kind}.</span>
+      <button type="button" class="btn sm" data-import>Upload file (CSV / XLS / PDF)</button>
     </div>`;
   }
 
@@ -1234,7 +1234,7 @@ const Forms = (() => {
     wireSegs(container);
     spec.wire(a);
     container.querySelectorAll('[data-import]').forEach(b => b.addEventListener('click', () => {
-      Importer.openModal(type);
+      AIImport.openUploadModal(type);
     }));
   }
 

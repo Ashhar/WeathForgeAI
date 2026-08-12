@@ -15,7 +15,8 @@
     "@supabase/supabase-js": "^2.45.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
-    "pdfjs-dist": "^4.10.0"
+    "pdfjs-dist": "^4.10.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "vite": "^6.0.0"
