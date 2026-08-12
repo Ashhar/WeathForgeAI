@@ -651,7 +651,7 @@ const Views = (() => {
           </div>
           <span class="dim small">Horizon</span>
           <div class="seg" id="horizon_seg">
-            ${[1, 3, 5, 10, 20].map(h => `<button class="${h === horizon ? 'on' : ''}" onclick="Router.go('/projections/${h}/${showNet ? ')net' : 'assets'}'">${h}y</button>`).join('')}
+            ${[1, 3, 5, 10, 20].map(h => `<button class="${h === horizon ? 'on' : ''}" onclick="Router.go('/projections/${h}/${showNet ? 'net' : 'assets'}')">${h}y</button>`).join('')}
           </div>
         </div>
       </div>
