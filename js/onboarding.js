@@ -28,7 +28,7 @@ const Onboarding = (() => {
       selector: '.grid.cols-2',
       title: 'Allocation & Projection',
       text: 'Left: asset allocation donut showing how your wealth is distributed. Right: 10-year Monte Carlo projection with 10th-90th percentile bands.',
-      position: 'bottom'
+      position: 'top'
     },
     {
       selector: '.sidebar-cta',
@@ -217,7 +217,10 @@ const Onboarding = (() => {
       spotlight.style.opacity = '1';
 
       positionTooltip(tooltip, rect, step.position);
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Scroll the tooltip into view so it's always visible and clickable
+      requestAnimationFrame(() => {
+        tooltip.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
     } else {
       spotlight.style.opacity = '0';
       tooltip.style.top = '50%';

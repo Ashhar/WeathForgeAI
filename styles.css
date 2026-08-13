@@ -764,7 +764,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 
 /* ============ PRIVACY MODE ============ */
-body.privacy-mode .hero-nw,
+body.privacy-mode .hero-value,
+body.privacy-mode .hero-meta b,
+body.privacy-mode .owed-chip,
 body.privacy-mode .stat-value,
 body.privacy-mode .stat-sub,
 body.privacy-mode .nw-amount,
@@ -772,16 +774,19 @@ body.privacy-mode .delta,
 body.privacy-mode td:nth-child(n+2):not(:last-child),
 body.privacy-mode .donut-center-val,
 body.privacy-mode .movers-val,
-body.privacy-mode .fan-label-val {
+body.privacy-mode .fan-label-val,
+body.privacy-mode .vl {
   filter: blur(10px);
   user-select: none;
   transition: filter 0.2s;
 }
-body.privacy-mode .hero-nw:hover,
+body.privacy-mode .hero-value:hover,
 body.privacy-mode .stat-value:hover,
 body.privacy-mode .stat-sub:hover,
 body.privacy-mode .nw-amount:hover,
 body.privacy-mode .delta:hover,
+body.privacy-mode .owed-chip:hover,
+body.privacy-mode .vl:hover,
 body.privacy-mode td:hover {
   filter: none;
 }
