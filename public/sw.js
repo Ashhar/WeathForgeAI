@@ -4,7 +4,7 @@
    - Supabase API: network-first, fall back to cached
    - Static assets: cache-first */
 
-const CACHE_NAME = 'wealthforge-v1';
+const CACHE_NAME = 'wealthforge-v2';
 const APP_SHELL = ['/', '/index.html'];
 
 self.addEventListener('install', event => {

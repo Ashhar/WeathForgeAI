@@ -586,6 +586,11 @@ const UI = (() => {
     Router.init(route);
     route();
     firstVisitDisclaimer();
+    // Wire sidebar tool buttons (no inline onclick for CSP compliance)
+    const privBtn = document.getElementById('privacy_toggle');
+    if (privBtn) privBtn.addEventListener('click', () => Privacy.toggle());
+    const tourBtn = document.getElementById('tour_btn');
+    if (tourBtn) tourBtn.addEventListener('click', () => Onboarding.startTour());
     // Trigger onboarding/tour after initial render
     setTimeout(() => {
       if (Auth.enabled() && Auth.session) {

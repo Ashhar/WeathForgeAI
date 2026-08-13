@@ -41,30 +41,30 @@
         </div>
       </div>
 
-      <button class="nav-item" data-route="dashboard" onclick="Router.go('/dashboard')">
+      <a class="nav-item" data-route="dashboard" href="/dashboard">
         <span class="ico" aria-hidden="true">◧</span> Dashboard
-      </button>
-      <button class="nav-item" data-route="holdings" onclick="Router.go('/holdings/equity')">
+      </a>
+      <a class="nav-item" data-route="holdings" href="/holdings/equity">
         <span class="ico" aria-hidden="true">☰</span> Holdings
-      </button>
-      <button class="nav-item" data-route="liabilities" onclick="Router.go('/liabilities')">
+      </a>
+      <a class="nav-item" data-route="liabilities" href="/liabilities">
         <span class="ico" aria-hidden="true">▤</span> Liabilities
-      </button>
-      <button class="nav-item" data-route="projections" onclick="Router.go('/projections')">
+      </a>
+      <a class="nav-item" data-route="projections" href="/projections">
         <span class="ico" aria-hidden="true">◔</span> Projections
-      </button>
-      <button class="nav-item" data-route="goals" onclick="Router.go('/goals')">
+      </a>
+      <a class="nav-item" data-route="goals" href="/goals">
         <span class="ico" aria-hidden="true">◎</span> Goals
-      </button>
-      <button class="nav-item" data-route="settings" onclick="Router.go('/settings')">
+      </a>
+      <a class="nav-item" data-route="settings" href="/settings">
         <span class="ico" aria-hidden="true">⚙</span> Settings
-      </button>
+      </a>
 
-      <button class="sidebar-cta" onclick="Router.go('/add')" aria-label="Add asset"><span aria-hidden="true">＋</span> Add asset</button>
+      <a class="sidebar-cta" href="/add" aria-label="Add asset"><span aria-hidden="true">＋</span> Add asset</a>
 
       <div class="sidebar-tools">
-        <button class="tool-btn" id="privacy_toggle" onclick="Privacy.toggle()" title="Hide amounts (Ctrl+Shift+P)">◎</button>
-        <button class="tool-btn" id="tour_btn" onclick="Onboarding.startTour()" title="Take a guided tour">?</button>
+        <button class="tool-btn" id="privacy_toggle" title="Hide amounts (Ctrl+Shift+P)">◎</button>
+        <button class="tool-btn" id="tour_btn" title="Take a guided tour">?</button>
       </div>
 
       <div class="sidebar-account" id="sidebar_account"></div>
@@ -84,11 +84,11 @@
     </main>
 
     <nav class="bottom-nav" aria-label="Primary">
-      <button data-route="dashboard" onclick="Router.go('/dashboard')" aria-label="Home — dashboard"><span class="bn-ico" aria-hidden="true">◧</span>Home</button>
-      <button data-route="holdings" onclick="Router.go('/holdings/equity')" aria-label="Holdings"><span class="bn-ico" aria-hidden="true">☰</span>Holdings</button>
-      <button class="bn-add" onclick="Router.go('/add')" aria-label="Add asset"><span class="bn-ico" aria-hidden="true">＋</span>Add</button>
-      <button data-route="liabilities" onclick="Router.go('/liabilities')" aria-label="Loans and liabilities"><span class="bn-ico" aria-hidden="true">▤</span>Loans</button>
-      <button data-route="projections" onclick="Router.go('/projections')" aria-label="Growth projections"><span class="bn-ico" aria-hidden="true">◔</span>Growth</button>
+      <a data-route="dashboard" href="/dashboard" aria-label="Home — dashboard"><span class="bn-ico" aria-hidden="true">◧</span>Home</a>
+      <a data-route="holdings" href="/holdings/equity" aria-label="Holdings"><span class="bn-ico" aria-hidden="true">☰</span>Holdings</a>
+      <a class="bn-add" href="/add" aria-label="Add asset"><span class="bn-ico" aria-hidden="true">＋</span>Add</a>
+      <a data-route="liabilities" href="/liabilities" aria-label="Loans and liabilities"><span class="bn-ico" aria-hidden="true">▤</span>Loans</a>
+      <a data-route="projections" href="/projections" aria-label="Growth projections"><span class="bn-ico" aria-hidden="true">◔</span>Growth</a>
     </nav>
   </div>
 
