@@ -23,4 +23,14 @@ import '../js/views.js';
 import '../js/pdf-font.js';
 import '../js/export.js';
 import '../js/share.js';
+import '../js/privacy.js';
+import '../js/cas-parser.js';
+import '../js/onboarding.js';
 import '../js/app.js';
+
+// Register service worker for PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}

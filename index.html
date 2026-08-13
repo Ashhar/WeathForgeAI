@@ -20,6 +20,11 @@
   <meta name="twitter:description" content="Add every asset you own, plus your loans, and see honest net worth, growth % and projections."/>
   <meta name="twitter:image" content="/og-image.png"/>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚒️</text></svg>"/>
+  <link rel="manifest" href="/manifest.json"/>
+  <meta name="theme-color" content="#e8b64c"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <link rel="apple-touch-icon" href="/icons/icon-192.svg"/>
   <script>
     // apply saved theme before first paint to avoid a flash
     try { document.documentElement.dataset.theme = localStorage.getItem('wf.theme') || 'dark'; } catch (e) {}
@@ -56,6 +61,11 @@
       </button>
 
       <button class="sidebar-cta" onclick="Router.go('/add')" aria-label="Add asset"><span aria-hidden="true">＋</span> Add asset</button>
+
+      <div class="sidebar-tools">
+        <button class="tool-btn" id="privacy_toggle" onclick="Privacy.toggle()" title="Hide amounts (Ctrl+Shift+P)">◎</button>
+        <button class="tool-btn" id="tour_btn" onclick="Onboarding.startTour()" title="Take a guided tour">?</button>
+      </div>
 
       <div class="sidebar-account" id="sidebar_account"></div>
 

@@ -315,6 +315,12 @@ const UI = (() => {
           <div class="t-desc">Upload any statement (CSV, XLS, PDF) from any broker — AI extracts all asset types automatically</div>
           <span class="tag live"><span class="dot"></span>Intelligent</span>
         </button>
+        <button class="type-card" onclick="CASParser.openCASModal()">
+          <div class="t-ico">📑</div>
+          <div class="t-name">CAS PDF Import</div>
+          <div class="t-desc">Import CAMS/KFintech Consolidated Account Statement — instant MF portfolio setup</div>
+          <span class="tag computed"><span class="dot"></span>Mutual Funds</span>
+        </button>
       </div>
       <div class="picker-group-title">Liabilities</div>
       <div class="type-grid">
@@ -536,8 +542,31 @@ const UI = (() => {
     });
   }
 
+  // ---------- session idle timeout ----------
+  let idleTimer = null;
+  const IDLE_TIMEOUT = 15 * 60 * 1000; // 15 minutes
+
+  function resetIdleTimer() {
+    if (!Auth.enabled() || !Auth.session) return;
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      if (Auth.session && !Auth.isDemo()) {
+        toast('Session expired due to inactivity');
+        Auth.signOut();
+      }
+    }, IDLE_TIMEOUT);
+  }
+
+  function initIdleTimer() {
+    ['click', 'keydown', 'scroll', 'touchstart'].forEach(evt =>
+      document.addEventListener(evt, resetIdleTimer, { passive: true })
+    );
+    resetIdleTimer();
+  }
+
   async function boot() {
     initTheme();
+    Privacy.init();
     if (Auth.enabled()) {
       await Auth.init();
       // live rates load alongside portfolio data so the first render
@@ -548,6 +577,7 @@ const UI = (() => {
         await Market.loadHeldQuotes(Store.all());
         await Market.loadHeldPrices();
         Store.backfillUserHistory();
+        initIdleTimer();
       }
     } else {
       Store.load();
@@ -556,6 +586,12 @@ const UI = (() => {
     Router.init(route);
     route();
     firstVisitDisclaimer();
+    // Trigger onboarding/tour after initial render
+    setTimeout(() => {
+      if (Auth.enabled() && Auth.session) {
+        Onboarding.startOnboarding();
+      }
+    }, 800);
   }
 
   function setHistRange(key) {

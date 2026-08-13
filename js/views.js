@@ -753,6 +753,11 @@ const Views = (() => {
         <div class="small faint" style="margin-top:10px">This demo simulates market feeds deterministically so it runs anywhere; <code>js/market.js</code> is the single swap-in point for real APIs.</div>
       </div>
       <div class="card" style="margin-top:18px">
+        <div class="card-title">Help & Tour</div>
+        <p class="dim small" style="margin-bottom:12px">Take a guided tour of the app to learn what each section does.</p>
+        <button class="btn" onclick="Onboarding.startTour()">? Restart guided tour</button>
+      </div>
+      <div class="card" style="margin-top:18px">
         <div class="card-title">Data</div>
         <p class="dim small" style="margin-bottom:12px">Holdings and liabilities persist in this browser (localStorage). Reset restores the sample portfolio.</p>
         <button class="btn danger" onclick="UI.resetDemo()">Reset demo data</button>

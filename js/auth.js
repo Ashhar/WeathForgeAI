@@ -61,6 +61,10 @@ const Auth = (() => {
     const dest = nextPath && !['/login', '/signup', '/forgot'].includes(nextPath) ? nextPath : '/dashboard';
     nextPath = null;
     Router.replace(dest);
+    // Trigger tour/onboarding after dashboard renders
+    setTimeout(() => {
+      if (typeof Onboarding !== 'undefined') Onboarding.startOnboarding();
+    }, 800);
   }
 
   // ---------- actions ----------

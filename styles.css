@@ -759,3 +759,171 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
+
+/* ============ PRIVACY MODE ============ */
+body.privacy-mode .hero-nw,
+body.privacy-mode .stat-value,
+body.privacy-mode .stat-sub,
+body.privacy-mode .nw-amount,
+body.privacy-mode .delta,
+body.privacy-mode td:nth-child(n+2):not(:last-child),
+body.privacy-mode .donut-center-val,
+body.privacy-mode .movers-val,
+body.privacy-mode .fan-label-val {
+  filter: blur(10px);
+  user-select: none;
+  transition: filter 0.2s;
+}
+body.privacy-mode .hero-nw:hover,
+body.privacy-mode .stat-value:hover,
+body.privacy-mode .stat-sub:hover,
+body.privacy-mode .nw-amount:hover,
+body.privacy-mode .delta:hover,
+body.privacy-mode td:hover {
+  filter: none;
+}
+
+/* ============ SIDEBAR TOOLS ============ */
+.sidebar-tools {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  margin-top: 8px;
+}
+.tool-btn {
+  width: 32px; height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  display: grid;
+  place-items: center;
+}
+.tool-btn:hover { color: var(--text); background: var(--surface-2); }
+
+/* ============ GUIDED TOUR ============ */
+.tour-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.6);
+  animation: fadeIn 0.2s;
+}
+.tour-spotlight {
+  position: absolute;
+  border-radius: var(--radius);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.6);
+  background: transparent;
+  transition: all 0.3s ease;
+  pointer-events: none;
+}
+.tour-tooltip {
+  position: absolute;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  max-width: 340px;
+  min-width: 260px;
+  box-shadow: var(--shadow);
+  z-index: 10000;
+  animation: slideUp 0.25s ease;
+}
+.tour-tooltip-title {
+  font-weight: 700;
+  font-size: 15px;
+  margin-bottom: 6px;
+  color: var(--brand);
+}
+.tour-tooltip-text {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+.tour-tooltip-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tour-step-indicator {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.tour-tooltip-actions {
+  display: flex;
+  gap: 8px;
+}
+.tour-tooltip-actions .btn { padding: 6px 12px; font-size: 12px; }
+.tour-skip { opacity: 0.7; }
+
+/* ============ ONBOARDING MODAL ============ */
+.onboarding-modal {
+  max-width: 440px;
+  padding: 0;
+}
+.onboarding-header {
+  text-align: center;
+  padding: 28px 24px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.onboarding-header h2 { font-size: 18px; margin-top: 12px; }
+.onboarding-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.onboarding-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.onboarding-option:hover {
+  background: var(--surface-2);
+  border-color: var(--brand);
+}
+.onboarding-icon {
+  width: 36px; height: 36px;
+  display: grid; place-items: center;
+  border-radius: 8px;
+  background: var(--surface-3);
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--brand);
+  flex-shrink: 0;
+}
+
+/* ============ CAS IMPORT ============ */
+.cas-preview-table {
+  width: 100%;
+  font-size: 12px;
+  border-collapse: collapse;
+  max-height: 200px;
+  display: block;
+  overflow-y: auto;
+}
+.cas-preview-table th,
+.cas-preview-table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.cas-preview-table th { font-weight: 600; color: var(--text-dim); }
+
+/* ============ ANIMATIONS ============ */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Tour responsive */
+@media (max-width: 600px) {
+  .tour-tooltip { max-width: calc(100vw - 32px); min-width: 0; }
+  .sidebar-tools { display: none; }
+}

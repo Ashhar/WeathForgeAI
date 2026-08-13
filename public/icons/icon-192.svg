@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <rect width="192" height="192" rx="40" fill="#0a0e17"/>
+  <rect x="16" y="16" width="160" height="160" rx="32" fill="url(#g)"/>
+  <defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#f4c766"/><stop offset="100%" stop-color="#c98a1b"/></linearGradient></defs>
+  <text x="96" y="124" text-anchor="middle" font-family="system-ui" font-weight="800" font-size="88" fill="#241a05">W</text>
+</svg>
