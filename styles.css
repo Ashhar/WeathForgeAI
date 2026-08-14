@@ -1162,8 +1162,8 @@ body.privacy-mode td:hover {
 .tool-card h4 { margin: 0 0 6px; font-size: 14px; font-weight: 700; }
 .tool-card p { margin: 0; font-size: 12px; color: var(--text-dim); }
 
-.tool-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
-.tool-form .full { grid-column: 1 / -1; }
+.tool-form { margin-bottom: 20px; }
+.tool-form .btn[type="submit"] { margin-top: 16px; }
 .tool-results { margin-top: 20px; }
 
 .scenario-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
