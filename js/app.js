@@ -388,11 +388,11 @@ Valid asset types:
 - smallsavings: NSC, SCSS, PO MIS, SSY, KVP
 - esop: employee stock options / RSUs
 - realestate: house, flat, plot, land, property
-- others: vehicles (cars, bikes, SUVs), jewellery, watches, art, collectibles, any physical depreciating/appreciating assets
+- other: vehicles (cars, bikes, SUVs), jewellery, watches, art, collectibles, any physical depreciating/appreciating assets
 
 Valid liability types: homeloan, carloan, personal, education, creditcard
 
-IMPORTANT: A car/vehicle/bike that someone BOUGHT or OWNS is an ASSET (type: "others", subType: "vehicle"). A car LOAN is a liability (type: "carloan"). Distinguish between the physical asset and the loan.
+IMPORTANT: A car/vehicle/bike that someone BOUGHT or OWNS is an ASSET (type: "other", subType: "vehicle"). A car LOAN is a liability (type: "carloan"). Distinguish between the physical asset and the loan.
 
 Respond ONLY with a JSON object (no markdown, no backticks):
 {
@@ -503,9 +503,9 @@ If you cannot determine the type at all, return: {"type": null, "error": "Could 
     if (/\b(car|suv|sedan|hatchback|bike|motorcycle|scooter|vehicle|auto)\b/i.test(t)) {
       const nameMatch = text.match(/(?:bought|my|have|own)?\s*([A-Z][\w]*(?:\s+[A-Z][\w]*)*)/);
       const label = nameMatch ? nameMatch[1].trim() : 'Vehicle';
-      return { type: 'others', isLiability: false, label, confidence: 'medium', data: { currentValue: val, subType: 'vehicle' }, ambiguities: [] };
+      return { type: 'other', isLiability: false, label, confidence: 'medium', data: { currentValue: val, subType: 'vehicle' }, ambiguities: [] };
     }
-    if (/\b(jewel|diamond|watch|art|painting|antique|collectible)\b/i.test(t)) return { type: 'others', isLiability: false, label: 'Collectible', confidence: 'medium', data: { currentValue: val }, ambiguities: [] };
+    if (/\b(jewel|diamond|watch|art|painting|antique|collectible)\b/i.test(t)) return { type: 'other', isLiability: false, label: 'Collectible', confidence: 'medium', data: { currentValue: val }, ambiguities: [] };
     // Fallback: "bought N <name> at <price>" pattern implies equity
     if (/\b(bought|buy|purchased)\b.*\d+.*\bat\b/i.test(t)) return { type: 'equity', isLiability: false, label: 'Equity', confidence: 'low', data: {}, ambiguities: ['ticker', 'quantity', 'date'] };
     return null;
