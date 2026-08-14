@@ -294,6 +294,20 @@ const UI = (() => {
           <div class="page-sub">Step 1 — pick the type; the form reshapes to it. The backbone is always the same: <b>what & how much</b>, <b>what it cost</b>, and <b>when</b>.</div>
         </div>
       </div>
+      <div class="nlp-section" id="nlp_section">
+        <p><b>Quick add</b> — type naturally and we'll parse it for you</p>
+        <div class="nlp-input-row">
+          <input type="text" id="nlp_input" placeholder='e.g., "Bought 100 Infosys at 1450 on 5th Aug" or "FD 5L in SBI for 1 year at 6.8%"' autocomplete="off"/>
+          <button class="btn primary" id="nlp_parse">Parse →</button>
+        </div>
+        <div class="nlp-examples" id="nlp_examples">
+          <span class="nlp-chip">50 shares TCS at 3200</span>
+          <span class="nlp-chip">SIP ₹10K in Axis Bluechip since Jan 2023</span>
+          <span class="nlp-chip">FD 5L in SBI for 1 year at 6.8%</span>
+          <span class="nlp-chip">Home loan 45L from HDFC at 8.5% for 20 years</span>
+        </div>
+        <div id="nlp_result"></div>
+      </div>
       ${Store.TYPE_GROUPS.map(g => `
         <div class="picker-group-title">${g.title}</div>
         <div class="type-grid">
@@ -332,6 +346,92 @@ const UI = (() => {
         </button>
       </div>
       <div class="disclaimer" style="margin-top:22px">💡 Have a broker / AMC / bank statement handy? Each form has <b>AI-Powered Import</b> — upload any CSV, XLS, or PDF and AI extracts your holdings automatically. Or use the quick manual path — quantity, average cost, date — to finish in seconds.</div>`;
+  }
+
+  function wireNLPInput() {
+    const btn = document.getElementById('nlp_parse');
+    const input = document.getElementById('nlp_input');
+    const result = document.getElementById('nlp_result');
+    const examples = document.getElementById('nlp_examples');
+    if (!btn || !input) return;
+
+    btn.addEventListener('click', () => parseNLP());
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') parseNLP(); });
+    if (examples) examples.addEventListener('click', e => {
+      const chip = e.target.closest('.nlp-chip');
+      if (chip) { input.value = chip.textContent; parseNLP(); }
+    });
+
+    async function parseNLP() {
+      const text = input.value.trim();
+      if (!text) return;
+      btn.disabled = true;
+      btn.textContent = 'Parsing...';
+      result.innerHTML = '<span class="dim">Analyzing input...</span>';
+
+      try {
+        let parsed;
+        if (Auth.enabled() && Auth.session) {
+          const url = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || '';
+          const token = Auth.session.access_token;
+          const res = await fetch(`${url}/functions/v1/ai-parse-entry`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ input: text })
+          });
+          if (res.ok) parsed = await res.json();
+          else throw new Error('AI parse failed');
+        } else {
+          parsed = localParseNLP(text);
+        }
+
+        if (parsed && parsed.type && !parsed.error) {
+          const conf = parsed.confidence || 'medium';
+          result.innerHTML = `<div class="nlp-result">
+            <div style="margin-bottom:8px"><span class="nlp-confidence ${conf}">${conf}</span> Detected: <b>${Store.TYPES[parsed.type]?.label || parsed.type}</b></div>
+            <div style="margin-bottom:8px"><b>${parsed.label || ''}</b></div>
+            ${parsed.ambiguities?.length ? `<div class="dim small" style="margin-bottom:8px">Couldn't determine: ${parsed.ambiguities.join(', ')}</div>` : ''}
+            <button class="btn primary" id="nlp_accept">Fill form with this →</button>
+          </div>`;
+          document.getElementById('nlp_accept')?.addEventListener('click', () => {
+            if (parsed.isLiability) {
+              Router.go('/add-liability');
+            } else {
+              Router.go('/add/' + parsed.type);
+            }
+          });
+        } else {
+          result.innerHTML = `<div class="nlp-result"><span class="dim">Could not parse. Try a different format or pick a type below.</span></div>`;
+        }
+      } catch (e) {
+        result.innerHTML = `<div class="nlp-result"><span class="dim">Parse unavailable. Pick a type below to add manually.</span></div>`;
+      }
+      btn.disabled = false;
+      btn.textContent = 'Parse →';
+    }
+  }
+
+  function localParseNLP(text) {
+    const t = text.toLowerCase();
+    const numMatch = text.match(/([\d,.]+)\s*(?:l(?:akh)?|lac)/i);
+    const amount = numMatch ? parseFloat(numMatch[1].replace(/,/g, '')) * 100000 : null;
+    const crMatch = text.match(/([\d,.]+)\s*cr(?:ore)?/i);
+    const amountCr = crMatch ? parseFloat(crMatch[1].replace(/,/g, '')) * 10000000 : null;
+    const val = amountCr || amount;
+
+    if (/home\s*loan|housing\s*loan/i.test(t)) return { type: 'homeloan', isLiability: true, label: 'Home Loan', confidence: 'medium', data: { principal: val }, ambiguities: [] };
+    if (/car\s*loan/i.test(t)) return { type: 'carloan', isLiability: true, label: 'Car Loan', confidence: 'medium', data: { principal: val }, ambiguities: [] };
+    if (/personal\s*loan/i.test(t)) return { type: 'personal', isLiability: true, label: 'Personal Loan', confidence: 'medium', data: { principal: val }, ambiguities: [] };
+    if (/\b(fd|fixed\s*deposit)\b/i.test(t)) return { type: 'fd', isLiability: false, label: 'Fixed Deposit', confidence: 'medium', data: { principal: val }, ambiguities: ['rate', 'tenure'] };
+    if (/\b(ppf)\b/i.test(t)) return { type: 'ppf', isLiability: false, label: 'PPF', confidence: 'medium', data: { balance: val }, ambiguities: [] };
+    if (/\b(epf|pf)\b/i.test(t)) return { type: 'epf', isLiability: false, label: 'EPF', confidence: 'medium', data: { balance: val }, ambiguities: [] };
+    if (/\b(nps)\b/i.test(t)) return { type: 'nps', isLiability: false, label: 'NPS', confidence: 'medium', data: {}, ambiguities: [] };
+    if (/\b(sip|mutual\s*fund|mf)\b/i.test(t)) return { type: 'mf', isLiability: false, label: 'Mutual Fund', confidence: 'medium', data: {}, ambiguities: ['scheme', 'units'] };
+    if (/\bshares?\b|\bstocks?\b|\bequity\b/i.test(t)) return { type: 'equity', isLiability: false, label: 'Equity', confidence: 'medium', data: {}, ambiguities: ['ticker', 'quantity'] };
+    if (/\b(btc|eth|crypto|bitcoin|ethereum)\b/i.test(t)) return { type: 'crypto', isLiability: false, label: 'Crypto', confidence: 'medium', data: {}, ambiguities: [] };
+    if (/\bgold\b|\bsilver\b/i.test(t)) return { type: 'gold', isLiability: false, label: 'Gold', confidence: 'medium', data: {}, ambiguities: [] };
+    if (/\b(flat|house|property|plot|land|real\s*estate)\b/i.test(t)) return { type: 'realestate', isLiability: false, label: 'Real Estate', confidence: 'medium', data: { currentValue: val }, ambiguities: [] };
+    return null;
   }
 
   function addEditForm(type, editId) {
@@ -471,9 +571,20 @@ const UI = (() => {
       case 'settings':
         view().innerHTML = Views.settings();
         break;
+      case 'tax':
+        if (parts[1] === 'plan') view().innerHTML = Tax.renderTaxPlan();
+        else view().innerHTML = Tax.renderTaxReport();
+        break;
+      case 'tools':
+        if (parts[1]) view().innerHTML = Tools.renderTool(parts[1]);
+        else view().innerHTML = Tools.renderToolsView();
+        break;
+      case 'digest':
+        view().innerHTML = Digest.renderDigestView();
+        break;
       case 'add':
         if (parts[1]) addEditForm(parts[1], null);
-        else view().innerHTML = typePicker();
+        else { view().innerHTML = typePicker(); wireNLPInput(); }
         break;
       case 'edit':
         if (parts[1]) {
@@ -578,6 +689,7 @@ const UI = (() => {
         await Market.loadHeldPrices();
         Store.backfillUserHistory();
         initIdleTimer();
+        Insights.fetchAIInsights();
       }
     } else {
       Store.load();
@@ -591,6 +703,8 @@ const UI = (() => {
     if (privBtn) privBtn.addEventListener('click', () => Privacy.toggle());
     const tourBtn = document.getElementById('tour_btn');
     if (tourBtn) tourBtn.addEventListener('click', () => Onboarding.startTour());
+    // Initialize AI chat panel
+    if (typeof AIChat !== 'undefined') AIChat.initPanel();
     // Trigger onboarding/tour after initial render
     setTimeout(() => {
       if (Auth.enabled() && Auth.session) {

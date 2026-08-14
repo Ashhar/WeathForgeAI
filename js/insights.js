@@ -211,7 +211,42 @@ const Insights = (() => {
     return out.sort((a, b) => order[a.severity] - order[b.severity]).slice(0, 5);
   }
 
-  return { generate };
+  // AI-enhanced insights (fetched from edge function, cached)
+  let aiInsights = null;
+  let aiInsightsLoading = false;
+
+  function getAIInsights() { return aiInsights; }
+
+  async function fetchAIInsights() {
+    if (aiInsightsLoading) return;
+    if (!Auth.enabled() || !Auth.session || Auth.isDemo()) return;
+    aiInsightsLoading = true;
+    try {
+      const sb = globalThis.Supa?.client;
+      if (!sb) return;
+      // Check cache first
+      const { data: cached } = await sb.from('cached_insights')
+        .select('*').eq('user_id', Auth.session.user.id).single();
+      if (cached && cached.insights?.length) {
+        const age = Date.now() - new Date(cached.generated_at).getTime();
+        if (age < 24 * 60 * 60 * 1000) { aiInsights = cached.insights; aiInsightsLoading = false; return; }
+      }
+      // Fetch fresh from edge function
+      const url = import.meta.env?.VITE_SUPABASE_URL || '';
+      const res = await fetch(`${url}/functions/v1/ai-insights`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Auth.session.access_token}` },
+        body: '{}'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        aiInsights = data.insights || [];
+      }
+    } catch (e) { /* AI insights unavailable — rule-based fallback continues */ }
+    aiInsightsLoading = false;
+  }
+
+  return { generate, fetchAIInsights, getAIInsights };
 })();
 
 if (typeof globalThis !== 'undefined') globalThis.Insights = Insights;

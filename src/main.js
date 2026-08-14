@@ -26,6 +26,10 @@ import '../js/share.js';
 import '../js/privacy.js';
 import '../js/cas-parser.js';
 import '../js/onboarding.js';
+import '../js/tax.js';
+import '../js/tools.js';
+import '../js/digest.js';
+import '../js/ai-chat.js';
 import '../js/app.js';
 
 // Register service worker for PWA

@@ -115,6 +115,7 @@ const Views = (() => {
     }).join('');
 
     const insights = Insights.generate();
+    const aiIns = Insights.getAIInsights();
 
     return `
       <div class="page-head">
@@ -161,8 +162,17 @@ const Views = (() => {
       ${historyCard()}
 
       <div class="card" style="margin-top:18px">
-        <div class="card-title">AI Insights <span class="right dim">rules over your own data</span></div>
-        ${insights.length ? `<div class="insight-list">
+        <div class="card-title">AI Insights <span class="right dim">${aiIns ? 'personalized' : 'rules over your own data'}</span></div>
+        ${aiIns && aiIns.length ? `<div class="insight-list">
+          ${aiIns.map(i => `<div class="insight sev-${i.severity || 'info'}">
+            <div class="insight-icon" aria-hidden="true">${i.severity === 'high' ? '🔴' : i.severity === 'positive' ? '✅' : i.severity === 'medium' ? '🟡' : '💡'}</div>
+            <div>
+              <div class="insight-title">${esc(i.title)}</div>
+              <div class="insight-body">${esc(i.body)}</div>
+              ${i.action ? `<div class="insight-src"><b>Action:</b> ${esc(i.action)}</div>` : ''}
+            </div>
+          </div>`).join('')}
+        </div>` : insights.length ? `<div class="insight-list">
           ${insights.map(i => `<div class="insight sev-${i.severity}">
             <div class="insight-icon" aria-hidden="true">${i.icon}</div>
             <div>
