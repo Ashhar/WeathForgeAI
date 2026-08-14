@@ -371,8 +371,9 @@ const UI = (() => {
 
       try {
         let parsed;
-        if (Auth.enabled() && Auth.session) {
-          const url = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || '';
+        const isCloud = typeof Auth !== 'undefined' && Auth.enabled() && Auth.session;
+        if (isCloud) {
+          const url = import.meta.env?.VITE_SUPABASE_URL || '';
           const token = Auth.session.access_token;
           const res = await fetch(`${url}/functions/v1/ai-parse-entry`, {
             method: 'POST',
@@ -380,7 +381,7 @@ const UI = (() => {
             body: JSON.stringify({ input: text })
           });
           if (res.ok) parsed = await res.json();
-          else throw new Error('AI parse failed');
+          else parsed = localParseNLP(text);
         } else {
           parsed = localParseNLP(text);
         }
@@ -404,7 +405,27 @@ const UI = (() => {
           result.innerHTML = `<div class="nlp-result"><span class="dim">Could not parse. Try a different format or pick a type below.</span></div>`;
         }
       } catch (e) {
-        result.innerHTML = `<div class="nlp-result"><span class="dim">Parse unavailable. Pick a type below to add manually.</span></div>`;
+        // Fallback to local parser if cloud request fails
+        try {
+          const parsed = localParseNLP(text);
+          if (parsed && parsed.type) {
+            const conf = parsed.confidence || 'medium';
+            result.innerHTML = `<div class="nlp-result">
+              <div style="margin-bottom:8px"><span class="nlp-confidence ${conf}">${conf}</span> Detected: <b>${Store.TYPES[parsed.type]?.label || parsed.type}</b></div>
+              <div style="margin-bottom:8px"><b>${parsed.label || ''}</b></div>
+              ${parsed.ambiguities?.length ? `<div class="dim small" style="margin-bottom:8px">Couldn't determine: ${parsed.ambiguities.join(', ')}</div>` : ''}
+              <button class="btn primary" id="nlp_accept">Fill form with this →</button>
+            </div>`;
+            document.getElementById('nlp_accept')?.addEventListener('click', () => {
+              if (parsed.isLiability) Router.go('/add-liability');
+              else Router.go('/add/' + parsed.type);
+            });
+          } else {
+            result.innerHTML = `<div class="nlp-result"><span class="dim">Could not parse. Try a different format or pick a type below.</span></div>`;
+          }
+        } catch (e2) {
+          result.innerHTML = `<div class="nlp-result"><span class="dim">Parse unavailable. Pick a type below to add manually.</span></div>`;
+        }
       }
       btn.disabled = false;
       btn.textContent = 'Parse →';
@@ -431,6 +452,8 @@ const UI = (() => {
     if (/\b(btc|eth|crypto|bitcoin|ethereum)\b/i.test(t)) return { type: 'crypto', isLiability: false, label: 'Crypto', confidence: 'medium', data: {}, ambiguities: [] };
     if (/\bgold\b|\bsilver\b/i.test(t)) return { type: 'gold', isLiability: false, label: 'Gold', confidence: 'medium', data: {}, ambiguities: [] };
     if (/\b(flat|house|property|plot|land|real\s*estate)\b/i.test(t)) return { type: 'realestate', isLiability: false, label: 'Real Estate', confidence: 'medium', data: { currentValue: val }, ambiguities: [] };
+    // Fallback: "bought N <name> at <price>" pattern implies equity
+    if (/\b(bought|buy|purchased)\b.*\d+.*\bat\b/i.test(t)) return { type: 'equity', isLiability: false, label: 'Equity', confidence: 'low', data: {}, ambiguities: ['ticker', 'quantity', 'date'] };
     return null;
   }
 
@@ -578,6 +601,7 @@ const UI = (() => {
       case 'tools':
         if (parts[1]) view().innerHTML = Tools.renderTool(parts[1]);
         else view().innerHTML = Tools.renderToolsView();
+        Tools.wireToolForms();
         break;
       case 'digest':
         view().innerHTML = Digest.renderDigestView();

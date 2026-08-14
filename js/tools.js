@@ -282,8 +282,8 @@ const Tools = (() => {
       { id: 'retirement', icon: '🏖️', title: 'Retirement Planner', desc: 'Calculate the corpus you need to retire comfortably and the monthly SIP to get there.' },
       { id: 'emergency', icon: '🛟', title: 'Emergency Fund', desc: 'Check if your liquid assets cover 6 months of outflows — auto-computed from your portfolio.' },
       { id: 'prepayment', icon: '⚖️', title: 'Loan Prepayment', desc: 'Compare prepaying a loan (reduce tenure vs. reduce EMI) against investing the surplus.' },
-      { id: 'sipstepup', icon: '📈', title: 'SIP Step-Up', desc: 'Model how annual SIP increases compound over time versus a flat SIP.' },
-      { id: 'goalgap', icon: '🎯', title: 'Goal Gap Analysis', desc: 'See each goal\'s progress and the monthly SIP needed to bridge the gap on time.' },
+      { id: 'sip-stepup', icon: '📈', title: 'SIP Step-Up', desc: 'Model how annual SIP increases compound over time versus a flat SIP.' },
+      { id: 'goal-gap', icon: '🎯', title: 'Goal Gap Analysis', desc: 'See each goal\'s progress and the monthly SIP needed to bridge the gap on time.' },
     ];
 
     return `
@@ -295,12 +295,12 @@ const Tools = (() => {
       </div>
       <div class="tools-grid">
         ${cards.map(c => `
-          <div class="tool-card card" data-tool="${c.id}">
+          <a href="/tools/${c.id}" class="tool-card card" data-tool="${c.id}" style="text-decoration:none;color:inherit">
             <div class="tool-card-icon" aria-hidden="true">${c.icon}</div>
             <div class="tool-card-title">${esc(c.title)}</div>
             <div class="tool-card-desc dim">${esc(c.desc)}</div>
-            <button class="btn primary" style="margin-top:auto" onclick="UI.openTool('${c.id}')">Open</button>
-          </div>
+            <span class="btn primary" style="margin-top:auto">Open</span>
+          </a>
         `).join('')}
       </div>`;
   }
@@ -316,12 +316,12 @@ const Tools = (() => {
           <h1 class="page-title">Retirement Planner</h1>
           <div class="page-sub">How much do you need to retire, and what SIP gets you there?</div>
         </div>
-        <button class="btn" onclick="UI.openTool(null)">Back to Tools</button>
+        <button class="btn" onclick="event.preventDefault();Router.go('/tools')">Back to Tools</button>
       </div>
 
       <div class="card">
         <div class="card-title">Inputs</div>
-        <form id="retirement-form" class="tool-form" onsubmit="UI.calcRetirement(event)">
+        <form id="retirement-form" class="tool-form">
           <div class="form-grid">
             <label class="field">
               <span class="field-label">Current age</span>
@@ -363,7 +363,7 @@ const Tools = (() => {
       <div id="retirement-results" class="card" style="display:none;margin-top:18px">
         <div class="card-title">Results</div>
         <div id="retirement-output"></div>
-        <button class="btn" style="margin-top:16px" onclick="UI.aiAdvice('retirement')">Get AI advice</button>
+        <button class="btn" style="margin-top:16px" id="retirement-ai-btn">Get AI advice</button>
       </div>
 
       <div class="disclaimer" style="margin-top:12px">
@@ -385,7 +385,7 @@ const Tools = (() => {
           <h1 class="page-title">Emergency Fund Analysis</h1>
           <div class="page-sub">Auto-computed from your EMIs and liquid holdings.</div>
         </div>
-        <button class="btn" onclick="UI.openTool(null)">Back to Tools</button>
+        <button class="btn" onclick="event.preventDefault();Router.go('/tools')">Back to Tools</button>
       </div>
 
       <div class="card">
@@ -452,7 +452,7 @@ const Tools = (() => {
           <h1 class="page-title">Loan Prepayment Analysis</h1>
           <div class="page-sub">Compare prepaying vs. investing your surplus.</div>
         </div>
-        <button class="btn" onclick="UI.openTool(null)">Back to Tools</button>
+        <button class="btn" onclick="event.preventDefault();Router.go('/tools')">Back to Tools</button>
       </div>
 
       ${noLoans ? `
@@ -465,7 +465,7 @@ const Tools = (() => {
       </div>` : `
       <div class="card">
         <div class="card-title">Inputs</div>
-        <form id="prepay-form" class="tool-form" onsubmit="UI.calcPrepayment(event)">
+        <form id="prepay-form" class="tool-form">
           <div class="form-grid">
             <label class="field">
               <span class="field-label">Select loan</span>
@@ -497,12 +497,12 @@ const Tools = (() => {
           <h1 class="page-title">SIP Step-Up Planner</h1>
           <div class="page-sub">See how annual SIP increases compound your wealth faster.</div>
         </div>
-        <button class="btn" onclick="UI.openTool(null)">Back to Tools</button>
+        <button class="btn" onclick="event.preventDefault();Router.go('/tools')">Back to Tools</button>
       </div>
 
       <div class="card">
         <div class="card-title">Inputs</div>
-        <form id="sipstepup-form" class="tool-form" onsubmit="UI.calcSIPStepUp(event)">
+        <form id="sipstepup-form" class="tool-form">
           <div class="form-grid">
             <label class="field">
               <span class="field-label">Current monthly SIP</span>
@@ -547,7 +547,7 @@ const Tools = (() => {
             <h1 class="page-title">Goal Gap Analysis</h1>
             <div class="page-sub">Per-goal progress and the SIP needed to bridge each gap.</div>
           </div>
-          <button class="btn" onclick="UI.openTool(null)">Back to Tools</button>
+          <button class="btn" onclick="event.preventDefault();Router.go('/tools')">Back to Tools</button>
         </div>
         <div class="card">
           <div class="empty" style="padding:34px 20px">
@@ -605,7 +605,7 @@ const Tools = (() => {
           <h1 class="page-title">Goal Gap Analysis</h1>
           <div class="page-sub">Per-goal progress and the SIP needed to bridge each gap on time.</div>
         </div>
-        <button class="btn" onclick="UI.openTool(null)">Back to Tools</button>
+        <button class="btn" onclick="event.preventDefault();Router.go('/tools')">Back to Tools</button>
       </div>
       ${goalCards}
       <div class="disclaimer" style="margin-top:12px">
@@ -734,6 +734,81 @@ const Tools = (() => {
     }
   }
 
+  function wireToolForms() {
+    const retForm = document.getElementById('retirement-form');
+    if (retForm) {
+      retForm.addEventListener('submit', e => {
+        e.preventDefault();
+        const fd = new FormData(retForm);
+        const inputs = {
+          currentAge: parseInt(fd.get('currentAge'), 10),
+          retirementAge: parseInt(fd.get('retirementAge'), 10),
+          monthlyExpenses: parseFloat(fd.get('monthlyExpenses')),
+          inflationRate: parseFloat(fd.get('inflationRate')),
+          expectedReturn: parseFloat(fd.get('expectedReturn')),
+          postRetReturn: parseFloat(fd.get('postRetReturn')),
+          lifeExpectancy: parseInt(fd.get('lifeExpectancy'), 10),
+          existingCorpus: parseFloat(fd.get('existingCorpus')),
+        };
+        const result = retirementCalculator(inputs);
+        const out = document.getElementById('retirement-output');
+        const wrap = document.getElementById('retirement-results');
+        if (out && wrap) {
+          out.innerHTML = formatRetirementResults(result);
+          wrap.style.display = '';
+        }
+      });
+    }
+
+    const aiBtn = document.getElementById('retirement-ai-btn');
+    if (aiBtn) {
+      aiBtn.addEventListener('click', () => {
+        if (typeof AIChat !== 'undefined') {
+          if (!AIChat.isOpen) AIChat.toggle();
+          AIChat.askQuestion('Based on my portfolio, what is your retirement planning advice?');
+        }
+      });
+    }
+
+    const prepayForm = document.getElementById('prepay-form');
+    if (prepayForm) {
+      prepayForm.addEventListener('submit', e => {
+        e.preventDefault();
+        const fd = new FormData(prepayForm);
+        const liabilityId = fd.get('liabilityId');
+        const surplusAmount = parseFloat(fd.get('surplusAmount'));
+        const result = loanPrepaymentAnalysis(liabilityId, surplusAmount);
+        const out = document.getElementById('prepay-output');
+        const wrap = document.getElementById('prepay-results');
+        if (out && wrap) {
+          out.innerHTML = formatPrepayResults(result);
+          wrap.style.display = '';
+        }
+      });
+    }
+
+    const sipForm = document.getElementById('sipstepup-form');
+    if (sipForm) {
+      sipForm.addEventListener('submit', e => {
+        e.preventDefault();
+        const fd = new FormData(sipForm);
+        const inputs = {
+          currentSIP: parseFloat(fd.get('currentSIP')),
+          stepUpPct: parseFloat(fd.get('stepUpPct')),
+          years: parseInt(fd.get('years'), 10),
+          expectedReturn: parseFloat(fd.get('expectedReturn')),
+        };
+        const result = sipStepUpPlanner(inputs);
+        const out = document.getElementById('sipstepup-output');
+        const wrap = document.getElementById('sipstepup-results');
+        if (out && wrap) {
+          out.innerHTML = formatSIPStepUpResults(result, inputs);
+          wrap.style.display = '';
+        }
+      });
+    }
+  }
+
   return {
     // Calculators
     retirementCalculator,
@@ -749,6 +824,8 @@ const Tools = (() => {
     renderPrepaymentCalc,
     renderSIPStepUp,
     renderGoalGap,
+    // Wire form event listeners
+    wireToolForms,
     // Formatters (for post-calculation rendering)
     formatRetirementResults,
     formatPrepayResults,
