@@ -376,14 +376,29 @@ const UI = (() => {
 
 Input: "${text}"
 
-Valid asset types: equity, mf, crypto, fd, gold, epf, ppf, nps, smallsavings, esop, realestate, others
+Valid asset types:
+- equity: stocks/shares (NSE/BSE listed)
+- mf: mutual funds, SIPs
+- crypto: Bitcoin, Ethereum, etc.
+- fd: fixed deposits
+- gold: physical gold, silver, sovereign gold bonds
+- epf: Employee Provident Fund
+- ppf: Public Provident Fund
+- nps: National Pension System
+- smallsavings: NSC, SCSS, PO MIS, SSY, KVP
+- esop: employee stock options / RSUs
+- realestate: house, flat, plot, land, property
+- others: vehicles (cars, bikes, SUVs), jewellery, watches, art, collectibles, any physical depreciating/appreciating assets
+
 Valid liability types: homeloan, carloan, personal, education, creditcard
+
+IMPORTANT: A car/vehicle/bike that someone BOUGHT or OWNS is an ASSET (type: "others", subType: "vehicle"). A car LOAN is a liability (type: "carloan"). Distinguish between the physical asset and the loan.
 
 Respond ONLY with a JSON object (no markdown, no backticks):
 {
   "type": "<asset_type or liability_type>",
   "isLiability": <true/false>,
-  "label": "<descriptive label, e.g. 'Infosys Shares' or 'SBI FD'>",
+  "label": "<descriptive label, e.g. 'Honda Elevate SUV' or 'SBI FD'>",
   "confidence": "high" | "medium" | "low",
   "data": {
     // For equity: { "ticker": "INFY", "quantity": 100, "avgCost": 1450, "acquiredOn": "2024-08-05" }
@@ -392,12 +407,15 @@ Respond ONLY with a JSON object (no markdown, no backticks):
     // For loans: { "principal": 4500000, "rate": 8.5, "tenureYears": 20, "lender": "HDFC" }
     // For gold: { "weightGrams": ..., "costPerGram": ... }
     // For crypto: { "coin": "BTC", "quantity": ..., "avgCost": ... }
+    // For others (vehicle): { "subType": "vehicle", "purchasePrice": ..., "currentValue": ..., "acquiredOn": "2023-11-01", "make": "Honda", "model": "Elevate" }
+    // For others (jewellery/art): { "subType": "jewellery", "purchasePrice": ..., "currentValue": ... }
     // Include whatever fields you can extract from the input
   },
   "ambiguities": ["<list of fields that could not be determined from the input>"]
 }
 
 Convert Indian number shorthands: K=1000, L/Lakh=100000, Cr/Crore=10000000.
+Parse dates: "nov 2023" → "2023-11-01", "5th Aug" → current year August 5.
 If you cannot determine the type at all, return: {"type": null, "error": "Could not determine asset type"}`;
 
       const res = await model.generateContent(prompt);
@@ -482,6 +500,12 @@ If you cannot determine the type at all, return: {"type": null, "error": "Could 
     if (/\b(btc|eth|crypto|bitcoin|ethereum)\b/i.test(t)) return { type: 'crypto', isLiability: false, label: 'Crypto', confidence: 'medium', data: {}, ambiguities: [] };
     if (/\bgold\b|\bsilver\b/i.test(t)) return { type: 'gold', isLiability: false, label: 'Gold', confidence: 'medium', data: {}, ambiguities: [] };
     if (/\b(flat|house|property|plot|land|real\s*estate)\b/i.test(t)) return { type: 'realestate', isLiability: false, label: 'Real Estate', confidence: 'medium', data: { currentValue: val }, ambiguities: [] };
+    if (/\b(car|suv|sedan|hatchback|bike|motorcycle|scooter|vehicle|auto)\b/i.test(t)) {
+      const nameMatch = text.match(/(?:bought|my|have|own)?\s*([A-Z][\w]*(?:\s+[A-Z][\w]*)*)/);
+      const label = nameMatch ? nameMatch[1].trim() : 'Vehicle';
+      return { type: 'others', isLiability: false, label, confidence: 'medium', data: { currentValue: val, subType: 'vehicle' }, ambiguities: [] };
+    }
+    if (/\b(jewel|diamond|watch|art|painting|antique|collectible)\b/i.test(t)) return { type: 'others', isLiability: false, label: 'Collectible', confidence: 'medium', data: { currentValue: val }, ambiguities: [] };
     // Fallback: "bought N <name> at <price>" pattern implies equity
     if (/\b(bought|buy|purchased)\b.*\d+.*\bat\b/i.test(t)) return { type: 'equity', isLiability: false, label: 'Equity', confidence: 'low', data: {}, ambiguities: ['ticker', 'quantity', 'date'] };
     return null;
