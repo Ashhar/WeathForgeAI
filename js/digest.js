@@ -8,6 +8,7 @@
 const Digest = (() => {
   const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const { fmtINR, fmtPct, fmtDate } = Fin;
+  const GEMINI_KEY = import.meta.env?.VITE_GEMINI_API_KEY || '';
 
   // ---------- helpers ----------
 
@@ -271,10 +272,10 @@ const Digest = (() => {
         </div>`;
     }
 
-    // Cloud mode: show AI digest button if Supabase is available
-    const isCloud = typeof Supa !== 'undefined' && Supa.enabled && Auth.session && !Auth.isDemo();
-    const aiBtn = isCloud
-      ? `<button class="btn" id="digest_ai_btn" onclick="Digest.requestAIDigest()">Generate AI Digest</button>`
+    // Show AI digest button if Gemini key is configured
+    const hasAI = !!GEMINI_KEY;
+    const aiBtn = hasAI
+      ? `<button class="btn" id="digest_ai_btn">Generate AI Digest</button>`
       : '';
 
     const cards = digests.map(d => formatDigestCard(d)).join('');
@@ -295,32 +296,125 @@ const Digest = (() => {
   }
 
   /**
-   * requestAIDigest() — placeholder for AI-powered digest via edge function.
-   * In cloud mode, this would call the Supabase edge function.
+   * requestAIDigest() — generates AI-powered commentary using Gemini API.
    */
-  function requestAIDigest() {
+  async function requestAIDigest() {
     const btn = document.getElementById('digest_ai_btn');
     if (btn) {
       btn.disabled = true;
       btn.textContent = 'Generating...';
     }
-    // Placeholder: in a real implementation this would call:
-    // const { data } = await sb().functions.invoke('generate-digest', { body: { month: ... } })
-    setTimeout(() => {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = 'Generate AI Digest';
+
+    if (!GEMINI_KEY) {
+      showDigestNotice('Set VITE_GEMINI_API_KEY in your .env file to enable AI-powered digests.', 'warning');
+      if (btn) { btn.disabled = false; btn.textContent = 'Generate AI Digest'; }
+      return;
+    }
+
+    try {
+      const digest = generateLocalDigest();
+      if (!digest) {
+        showDigestNotice('Not enough snapshot data to generate a digest.', 'info');
+        if (btn) { btn.disabled = false; btn.textContent = 'Generate AI Digest'; }
+        return;
       }
-      // Show a notice that AI digest is not yet configured
-      const list = document.querySelector('.digest-list');
-      if (list) {
-        const notice = document.createElement('div');
-        notice.className = 'card';
-        notice.style.cssText = 'padding:16px;margin-bottom:16px;border-left:3px solid var(--accent)';
-        notice.innerHTML = '<b>AI Digest</b><p class="small" style="margin-top:4px">Connect an AI provider in Settings to unlock personalised monthly commentary and recommendations.</p>';
-        list.insertBefore(notice, list.firstChild);
-      }
-    }, 1200);
+
+      const p = Store.portfolio();
+      const context = buildDigestContext(digest, p);
+
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+      const model = genAI.getGenerativeModel({
+        model: 'gemini-2.5-flash',
+        generationConfig: { temperature: 0.7, maxOutputTokens: 2048 },
+      });
+
+      const prompt = `You are a personal wealth advisor writing a monthly portfolio digest for an Indian investor.
+
+Portfolio context:
+${context}
+
+Write a personalised monthly digest with:
+1. A 1-line headline summarising the month (engaging, not generic)
+2. 2-3 paragraphs of commentary: what moved, why it likely moved, and what to watch next month
+3. 1-2 actionable recommendations based on the data (not generic advice)
+4. A brief risk callout if any concentration or debt issue stands out
+
+Rules:
+- Use Indian Rupee formatting (₹, L for lakhs, Cr for crores)
+- Be specific to THIS portfolio — reference actual holdings/types by name
+- Keep it under 300 words total
+- Tone: professional but conversational, like a smart friend who manages money
+- Do NOT give disclaimers or say "I'm an AI" — just deliver the digest`;
+
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+
+      showDigestNotice(text, 'ai');
+    } catch (err) {
+      const msg = err.message?.includes('API key') || err.message?.includes('401')
+        ? 'Invalid Gemini API key — check VITE_GEMINI_API_KEY in your .env file.'
+        : `AI digest failed: ${err.message || 'Unknown error'}`;
+      showDigestNotice(msg, 'warning');
+    }
+
+    if (btn) { btn.disabled = false; btn.textContent = 'Generate AI Digest'; }
+  }
+
+  function buildDigestContext(digest, portfolio) {
+    const lines = [];
+    lines.push(`Period: ${digest.period}`);
+    lines.push(`Net worth: ${fmtINR(digest.netWorthEnd)} (was ${fmtINR(digest.netWorthStart)} at month start)`);
+    lines.push(`Change: ${digest.change >= 0 ? '+' : ''}${fmtINR(digest.change)} (${(digest.changePct * 100).toFixed(1)}%)`);
+
+    if (digest.topMovers.length) {
+      lines.push('Top movers (gained): ' + digest.topMovers.map(m => `${m.name} +${fmtINR(m.change, { compact: true })} (${(m.pct * 100).toFixed(1)}%)`).join(', '));
+    }
+    if (digest.bottomMovers.length) {
+      lines.push('Bottom movers (lost): ' + digest.bottomMovers.map(m => `${m.name} ${fmtINR(m.change, { compact: true })} (${(m.pct * 100).toFixed(1)}%)`).join(', '));
+    }
+
+    const alloc = Object.entries(portfolio.byType).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+    if (alloc.length) {
+      lines.push('Allocation: ' + alloc.map(([t, v]) => `${(Store.TYPES[t] || {}).label || t}: ${fmtINR(v, { compact: true })} (${((v / portfolio.totalAssets) * 100).toFixed(0)}%)`).join(', '));
+    }
+
+    if (portfolio.totalLiabilities > 0) {
+      lines.push(`Total liabilities: ${fmtINR(portfolio.totalLiabilities, { compact: true })}`);
+    }
+
+    const goals = Store.goals();
+    if (goals.length) {
+      lines.push('Goals: ' + goals.map(g => `"${g.title}" — ${g.achieved ? 'ACHIEVED' : `${((portfolio.netWorth / g.targetAmount) * 100).toFixed(0)}% of ${fmtINR(g.targetAmount, { compact: true })}`}`).join(', '));
+    }
+
+    return lines.join('\n');
+  }
+
+  function showDigestNotice(content, type) {
+    const list = document.querySelector('.digest-list');
+    if (!list) return;
+    const existing = document.getElementById('ai-digest-notice');
+    if (existing) existing.remove();
+
+    const notice = document.createElement('div');
+    notice.id = 'ai-digest-notice';
+    notice.className = 'card';
+    const borderColor = type === 'warning' ? 'var(--amber, #f59e0b)' : type === 'ai' ? 'var(--brand, #00d4ff)' : 'var(--muted)';
+    notice.style.cssText = `padding:16px;margin-bottom:16px;border-left:3px solid ${borderColor}`;
+
+    if (type === 'ai') {
+      const html = content.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+      notice.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><b>AI Digest</b><span class="tag" style="font-size:0.7em;padding:2px 6px;background:var(--brand);color:#000;border-radius:4px">Gemini</span></div><div style="line-height:1.6">${html}</div>`;
+    } else {
+      notice.innerHTML = `<b>${type === 'warning' ? 'AI Digest Unavailable' : 'AI Digest'}</b><p class="small" style="margin-top:4px">${esc(content)}</p>`;
+    }
+    list.insertBefore(notice, list.firstChild);
+  }
+
+  function wireDigestView() {
+    const btn = document.getElementById('digest_ai_btn');
+    if (btn) btn.addEventListener('click', () => requestAIDigest());
   }
 
   return {
@@ -328,6 +422,7 @@ const Digest = (() => {
     getMonthlyDigests,
     formatDigestCard,
     renderDigestView,
+    wireDigestView,
     requestAIDigest,
   };
 })();

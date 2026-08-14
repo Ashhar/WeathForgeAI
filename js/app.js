@@ -355,12 +355,57 @@ const UI = (() => {
     const examples = document.getElementById('nlp_examples');
     if (!btn || !input) return;
 
+    const GEMINI_KEY = import.meta.env?.VITE_GEMINI_API_KEY || '';
+
     btn.addEventListener('click', () => parseNLP());
     input.addEventListener('keydown', e => { if (e.key === 'Enter') parseNLP(); });
     if (examples) examples.addEventListener('click', e => {
       const chip = e.target.closest('.nlp-chip');
       if (chip) { input.value = chip.textContent; parseNLP(); }
     });
+
+    async function geminiParseNLP(text) {
+      const { GoogleGenerativeAI } = await import('@google/generative-ai');
+      const genAI = new GoogleGenerativeAI(GEMINI_KEY);
+      const model = genAI.getGenerativeModel({
+        model: 'gemini-2.5-flash',
+        generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
+      });
+
+      const prompt = `Parse this natural language input into a structured asset/liability for an Indian portfolio tracker.
+
+Input: "${text}"
+
+Valid asset types: equity, mf, crypto, fd, gold, epf, ppf, nps, smallsavings, esop, realestate, others
+Valid liability types: homeloan, carloan, personal, education, creditcard
+
+Respond ONLY with a JSON object (no markdown, no backticks):
+{
+  "type": "<asset_type or liability_type>",
+  "isLiability": <true/false>,
+  "label": "<descriptive label, e.g. 'Infosys Shares' or 'SBI FD'>",
+  "confidence": "high" | "medium" | "low",
+  "data": {
+    // For equity: { "ticker": "INFY", "quantity": 100, "avgCost": 1450, "acquiredOn": "2024-08-05" }
+    // For mf: { "schemeName": "...", "sipAmount": 10000, "startDate": "2023-01-01" }
+    // For fd: { "principal": 500000, "rate": 6.8, "tenureYears": 1, "bank": "SBI" }
+    // For loans: { "principal": 4500000, "rate": 8.5, "tenureYears": 20, "lender": "HDFC" }
+    // For gold: { "weightGrams": ..., "costPerGram": ... }
+    // For crypto: { "coin": "BTC", "quantity": ..., "avgCost": ... }
+    // Include whatever fields you can extract from the input
+  },
+  "ambiguities": ["<list of fields that could not be determined from the input>"]
+}
+
+Convert Indian number shorthands: K=1000, L/Lakh=100000, Cr/Crore=10000000.
+If you cannot determine the type at all, return: {"type": null, "error": "Could not determine asset type"}`;
+
+      const res = await model.generateContent(prompt);
+      const responseText = res.response.text();
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return null;
+      return JSON.parse(jsonMatch[0]);
+    }
 
     async function parseNLP() {
       const text = input.value.trim();
@@ -371,64 +416,49 @@ const UI = (() => {
 
       try {
         let parsed;
-        const isCloud = typeof Auth !== 'undefined' && Auth.enabled() && Auth.session;
-        if (isCloud) {
-          const url = import.meta.env?.VITE_SUPABASE_URL || '';
-          const token = Auth.session.access_token;
-          const res = await fetch(`${url}/functions/v1/ai-parse-entry`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({ input: text })
-          });
-          if (res.ok) parsed = await res.json();
-          else parsed = localParseNLP(text);
+
+        if (GEMINI_KEY) {
+          parsed = await geminiParseNLP(text);
         } else {
           parsed = localParseNLP(text);
         }
 
         if (parsed && parsed.type && !parsed.error) {
-          const conf = parsed.confidence || 'medium';
-          result.innerHTML = `<div class="nlp-result">
-            <div style="margin-bottom:8px"><span class="nlp-confidence ${conf}">${conf}</span> Detected: <b>${Store.TYPES[parsed.type]?.label || parsed.type}</b></div>
-            <div style="margin-bottom:8px"><b>${parsed.label || ''}</b></div>
-            ${parsed.ambiguities?.length ? `<div class="dim small" style="margin-bottom:8px">Couldn't determine: ${parsed.ambiguities.join(', ')}</div>` : ''}
-            <button class="btn primary" id="nlp_accept">Fill form with this →</button>
-          </div>`;
-          document.getElementById('nlp_accept')?.addEventListener('click', () => {
-            if (parsed.isLiability) {
-              Router.go('/add-liability');
-            } else {
-              Router.go('/add/' + parsed.type);
-            }
-          });
+          showParseResult(parsed);
         } else {
           result.innerHTML = `<div class="nlp-result"><span class="dim">Could not parse. Try a different format or pick a type below.</span></div>`;
         }
       } catch (e) {
-        // Fallback to local parser if cloud request fails
-        try {
-          const parsed = localParseNLP(text);
-          if (parsed && parsed.type) {
-            const conf = parsed.confidence || 'medium';
-            result.innerHTML = `<div class="nlp-result">
-              <div style="margin-bottom:8px"><span class="nlp-confidence ${conf}">${conf}</span> Detected: <b>${Store.TYPES[parsed.type]?.label || parsed.type}</b></div>
-              <div style="margin-bottom:8px"><b>${parsed.label || ''}</b></div>
-              ${parsed.ambiguities?.length ? `<div class="dim small" style="margin-bottom:8px">Couldn't determine: ${parsed.ambiguities.join(', ')}</div>` : ''}
-              <button class="btn primary" id="nlp_accept">Fill form with this →</button>
-            </div>`;
-            document.getElementById('nlp_accept')?.addEventListener('click', () => {
-              if (parsed.isLiability) Router.go('/add-liability');
-              else Router.go('/add/' + parsed.type);
-            });
-          } else {
-            result.innerHTML = `<div class="nlp-result"><span class="dim">Could not parse. Try a different format or pick a type below.</span></div>`;
-          }
-        } catch (e2) {
-          result.innerHTML = `<div class="nlp-result"><span class="dim">Parse unavailable. Pick a type below to add manually.</span></div>`;
+        // Fallback to local parser if Gemini fails
+        const parsed = localParseNLP(text);
+        if (parsed && parsed.type) {
+          showParseResult(parsed);
+        } else {
+          result.innerHTML = `<div class="nlp-result"><span class="dim">Could not parse. Try a different format or pick a type below.</span></div>`;
         }
       }
       btn.disabled = false;
       btn.textContent = 'Parse →';
+    }
+
+    function showParseResult(parsed) {
+      const conf = parsed.confidence || 'medium';
+      const typeLabel = Store.TYPES[parsed.type]?.label || Store.LIABILITY_TYPES?.[parsed.type]?.label || parsed.type;
+      const dataEntries = parsed.data ? Object.entries(parsed.data).filter(([, v]) => v != null && v !== '') : [];
+      const dataHtml = dataEntries.length
+        ? `<div class="dim small" style="margin-bottom:8px">${dataEntries.map(([k, v]) => `${k}: <b>${v}</b>`).join(' · ')}</div>`
+        : '';
+      result.innerHTML = `<div class="nlp-result">
+        <div style="margin-bottom:8px"><span class="nlp-confidence ${conf}">${conf}</span> Detected: <b>${typeLabel}</b></div>
+        <div style="margin-bottom:8px"><b>${parsed.label || ''}</b></div>
+        ${dataHtml}
+        ${parsed.ambiguities?.length ? `<div class="dim small" style="margin-bottom:8px">Couldn't determine: ${parsed.ambiguities.join(', ')}</div>` : ''}
+        <button class="btn primary" id="nlp_accept">Fill form with this →</button>
+      </div>`;
+      document.getElementById('nlp_accept')?.addEventListener('click', () => {
+        if (parsed.isLiability) Router.go('/add-liability');
+        else Router.go('/add/' + parsed.type);
+      });
     }
   }
 
@@ -605,6 +635,7 @@ const UI = (() => {
         break;
       case 'digest':
         view().innerHTML = Digest.renderDigestView();
+        Digest.wireDigestView();
         break;
       case 'add':
         if (parts[1]) addEditForm(parts[1], null);
