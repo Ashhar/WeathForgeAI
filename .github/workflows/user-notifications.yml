@@ -1,0 +1,56 @@
+name: New user notifications
+
+# Daily check for new user registrations at 9:00 AM IST (3:30 UTC)
+# Sends email notification to admin if new users registered in last 24h
+# Secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SENDGRID_API_KEY, ADMIN_EMAIL
+on:
+  schedule:
+    - cron: "30 3 * * *"  # 9:00 AM IST daily
+  workflow_dispatch:  # Allow manual trigger for testing
+
+jobs:
+  check-and-notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check for new users
+        id: check
+        run: node scripts/check-new-users.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        continue-on-error: false
+
+      - name: Send email notification
+        if: steps.check.outputs.has_new_users == 'true'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.sendgrid.net
+          server_port: 587
+          secure: true
+          username: apikey
+          password: ${{ secrets.SENDGRID_API_KEY }}
+          subject: ${{ steps.check.outputs.email_subject }}
+          to: ${{ secrets.ADMIN_EMAIL }}
+          from: noreply@wealthforgeai.app
+          body: ${{ steps.check.outputs.email_body }}
+          content_type: text/plain
+          priority: normal
+
+      - name: Notification sent
+        if: steps.check.outputs.has_new_users == 'true'
+        run: |
+          echo "✅ Email notification sent successfully!"
+          echo "Recipients: ${{ secrets.ADMIN_EMAIL }}"
+          echo "New users: ${{ steps.check.outputs.user_count }}"
+
+      - name: No new users
+        if: steps.check.outputs.has_new_users != 'true'
+        run: echo "ℹ️  No new users registered in the last 24 hours. No email sent."
