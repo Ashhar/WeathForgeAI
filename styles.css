@@ -838,6 +838,9 @@ body.privacy-mode td:hover {
   box-shadow: var(--shadow);
   z-index: 10000;
   animation: slideUp 0.25s ease;
+  pointer-events: auto;
+  opacity: 1;
+  visibility: visible;
 }
 .tour-tooltip-title {
   font-weight: 700;
@@ -864,7 +867,13 @@ body.privacy-mode td:hover {
   display: flex;
   gap: 8px;
 }
-.tour-tooltip-actions .btn { padding: 6px 12px; font-size: 12px; }
+.tour-tooltip-actions .btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: 1;
+}
 .tour-skip { opacity: 0.7; }
 
 /* ============ ONBOARDING MODAL ============ */

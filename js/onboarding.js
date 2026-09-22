@@ -25,10 +25,11 @@ const Onboarding = (() => {
       position: 'bottom'
     },
     {
-      selector: '.grid.cols-2',
+      selector: '.grid.cols-2:first-of-type',
       title: 'Allocation & Projection',
       text: 'Left: asset allocation donut showing how your wealth is distributed. Right: 10-year Monte Carlo projection with 10th-90th percentile bands.',
-      position: 'top'
+      position: 'bottom',
+      fallback: true
     },
     {
       selector: '.sidebar-cta',
@@ -178,11 +179,34 @@ const Onboarding = (() => {
       </div>`;
     document.body.appendChild(overlay);
 
-    overlay.querySelector('.tour-skip').addEventListener('click', endTour);
-    overlay.querySelector('.tour-next').addEventListener('click', nextStep);
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) nextStep();
+    overlay.querySelector('.tour-skip').addEventListener('click', (e) => {
+      e.stopPropagation();
+      endTour();
     });
+    overlay.querySelector('.tour-next').addEventListener('click', (e) => {
+      e.stopPropagation();
+      nextStep();
+    });
+    overlay.addEventListener('click', (e) => {
+      // Only advance on backdrop click, not tooltip content
+      if (e.target === overlay || e.target.classList.contains('tour-spotlight')) {
+        nextStep();
+      }
+    });
+
+    // Keyboard support
+    const handleKeyPress = (e) => {
+      if (e.key === 'Escape') {
+        endTour();
+        document.removeEventListener('keydown', handleKeyPress);
+      } else if (e.key === 'Enter' || e.key === 'ArrowRight') {
+        nextStep();
+      }
+    };
+    document.addEventListener('keydown', handleKeyPress);
+
+    // Store reference to remove listener on end
+    overlay._keyHandler = handleKeyPress;
 
     nextStep();
   }
@@ -207,63 +231,137 @@ const Onboarding = (() => {
     title.textContent = step.title;
     text.textContent = step.text;
 
+    // Reset tooltip visibility and ensure it's always shown
+    tooltip.style.display = 'block';
+    tooltip.style.opacity = '1';
+    tooltip.style.visibility = 'visible';
+
     if (el) {
       const rect = el.getBoundingClientRect();
-      const padding = 8;
-      spotlight.style.top = (rect.top - padding + window.scrollY) + 'px';
-      spotlight.style.left = (rect.left - padding) + 'px';
-      spotlight.style.width = (rect.width + padding * 2) + 'px';
-      spotlight.style.height = (rect.height + padding * 2) + 'px';
-      spotlight.style.opacity = '1';
+      // Check if element has valid dimensions
+      const hasValidDimensions = rect.width > 0 && rect.height > 0;
 
-      positionTooltip(tooltip, rect, step.position);
-      // Scroll the tooltip into view so it's always visible and clickable
-      requestAnimationFrame(() => {
-        tooltip.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      });
+      if (hasValidDimensions) {
+        const padding = 8;
+        spotlight.style.top = (rect.top - padding + window.scrollY) + 'px';
+        spotlight.style.left = (rect.left - padding) + 'px';
+        spotlight.style.width = (rect.width + padding * 2) + 'px';
+        spotlight.style.height = (rect.height + padding * 2) + 'px';
+        spotlight.style.opacity = '1';
+
+        positionTooltip(tooltip, rect, step.position);
+        // Scroll the element into view first, then position tooltip
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Then ensure tooltip is visible after positioning
+        requestAnimationFrame(() => {
+          ensureTooltipVisible(tooltip);
+        });
+      } else {
+        // Element exists but has no dimensions - use fallback
+        useFallbackPosition(spotlight, tooltip);
+      }
     } else {
-      spotlight.style.opacity = '0';
+      // Element not found - use fallback
+      useFallbackPosition(spotlight, tooltip);
+    }
+  }
+
+  function useFallbackPosition(spotlight, tooltip) {
+    spotlight.style.opacity = '0';
+    tooltip.style.top = '50%';
+    tooltip.style.left = '50%';
+    tooltip.style.transform = 'translate(-50%, -50%)';
+    tooltip.style.maxWidth = '90vw';
+    tooltip.style.display = 'block';
+    tooltip.style.opacity = '1';
+    tooltip.style.visibility = 'visible';
+  }
+
+  function ensureTooltipVisible(tooltip) {
+    const tr = tooltip.getBoundingClientRect();
+    const margin = 16;
+
+    // Ensure tooltip is on screen
+    if (tr.bottom > window.innerHeight - margin || tr.top < margin ||
+        tr.right > window.innerWidth - margin || tr.left < margin) {
+      // If tooltip is off-screen, center it
       tooltip.style.top = '50%';
       tooltip.style.left = '50%';
       tooltip.style.transform = 'translate(-50%, -50%)';
+      tooltip.style.maxWidth = '90vw';
     }
+
+    // Final check: scroll into view if still not fully visible
+    tooltip.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
   }
 
   function positionTooltip(tooltip, rect, position) {
     const gap = 16;
+    const margin = 16;
     tooltip.style.transform = '';
+    tooltip.style.maxWidth = '340px';
+
+    // Calculate initial position
+    let top, left, transform = '';
 
     switch (position) {
       case 'bottom':
-        tooltip.style.top = (rect.bottom + gap + window.scrollY) + 'px';
-        tooltip.style.left = Math.max(16, rect.left) + 'px';
+        top = rect.bottom + gap + window.scrollY;
+        left = Math.max(margin, Math.min(rect.left, window.innerWidth - 340 - margin));
         break;
       case 'top':
-        tooltip.style.top = (rect.top - gap + window.scrollY) + 'px';
-        tooltip.style.left = Math.max(16, rect.left) + 'px';
-        tooltip.style.transform = 'translateY(-100%)';
+        top = rect.top - gap + window.scrollY;
+        left = Math.max(margin, Math.min(rect.left, window.innerWidth - 340 - margin));
+        transform = 'translateY(-100%)';
         break;
       case 'right':
-        tooltip.style.top = (rect.top + window.scrollY) + 'px';
-        tooltip.style.left = (rect.right + gap) + 'px';
+        top = rect.top + window.scrollY;
+        left = rect.right + gap;
         break;
       case 'left':
-        tooltip.style.top = (rect.top + window.scrollY) + 'px';
-        tooltip.style.left = (rect.left - gap) + 'px';
-        tooltip.style.transform = 'translateX(-100%)';
+        top = rect.top + window.scrollY;
+        left = rect.left - gap;
+        transform = 'translateX(-100%)';
         break;
     }
 
-    // Keep tooltip on screen
+    tooltip.style.top = top + 'px';
+    tooltip.style.left = left + 'px';
+    tooltip.style.transform = transform;
+
+    // Keep tooltip on screen - validate after positioning
     requestAnimationFrame(() => {
       const tr = tooltip.getBoundingClientRect();
-      if (tr.right > window.innerWidth - 16) {
-        tooltip.style.left = (window.innerWidth - tr.width - 16) + 'px';
+      const margin = 16;
+
+      // Check if tooltip is off-screen horizontally
+      if (tr.right > window.innerWidth - margin) {
+        tooltip.style.left = (window.innerWidth - tr.width - margin) + 'px';
       }
-      if (tr.left < 16) tooltip.style.left = '16px';
-      if (tr.bottom > window.innerHeight - 16) {
+      if (tr.left < margin) {
+        tooltip.style.left = margin + 'px';
+      }
+
+      // Check if tooltip is off-screen vertically
+      if (tr.bottom > window.innerHeight - margin) {
+        // Try positioning above the element
         tooltip.style.top = (rect.top - gap + window.scrollY) + 'px';
         tooltip.style.transform = 'translateY(-100%)';
+
+        // If still off-screen, center it
+        requestAnimationFrame(() => {
+          const tr2 = tooltip.getBoundingClientRect();
+          if (tr2.top < margin || tr2.bottom > window.innerHeight - margin) {
+            tooltip.style.top = '50%';
+            tooltip.style.left = '50%';
+            tooltip.style.transform = 'translate(-50%, -50%)';
+            tooltip.style.maxWidth = '90vw';
+          }
+        });
+      }
+      if (tr.top < margin) {
+        tooltip.style.top = (rect.bottom + gap + window.scrollY) + 'px';
+        tooltip.style.transform = '';
       }
     });
   }
@@ -271,7 +369,14 @@ const Onboarding = (() => {
   function endTour() {
     isActive = false;
     currentStep = -1;
-    if (overlay) { overlay.remove(); overlay = null; }
+    if (overlay) {
+      // Remove keyboard listener
+      if (overlay._keyHandler) {
+        document.removeEventListener('keydown', overlay._keyHandler);
+      }
+      overlay.remove();
+      overlay = null;
+    }
     markTourDone();
   }
 
