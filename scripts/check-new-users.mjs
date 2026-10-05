@@ -18,11 +18,11 @@ if (!SUPABASE_URL || !SERVICE_KEY) {
 
 async function checkNewUsers() {
   try {
-    console.log('🔍 Checking for new user registrations in the last 7 days (TEST MODE)...\n');
+    console.log('🔍 Checking for new user registrations in the last 24 hours...\n');
 
-    // Query auth.users for registrations in last 7 days (TEMPORARY FOR TESTING)
+    // Query auth.users for registrations in last 24 hours
     // Filter out demo account
-    const query = `created_at.gte.${new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()}`;
+    const query = `created_at.gte.${new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()}`;
 
     const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?${query}`, {
       method: 'GET',
@@ -46,7 +46,7 @@ async function checkNewUsers() {
     );
 
     if (newUsers.length === 0) {
-      console.log('✓ No new user registrations in the last 7 days (TEST MODE).');
+      console.log('✓ No new user registrations in the last 24 hours.');
       console.log('\nNo email notification needed.');
       process.exit(0);
     }
@@ -89,7 +89,7 @@ async function checkNewUsers() {
 
 function formatEmailBody(users) {
   const lines = [
-    `New user(s) registered in the last 7 days (TEST MODE):`,
+    `New user(s) registered in the last 24 hours:`,
     ``,
     `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`
   ];
