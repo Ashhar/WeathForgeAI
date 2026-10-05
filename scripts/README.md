@@ -36,15 +36,15 @@ Updates real-time stock prices for user portfolios.
 ### `check-new-users.mjs` ✨ NEW
 **Purpose:** Monitor new user registrations and send email notifications  
 **Schedule:** Daily at 3:30 AM UTC (9:00 AM IST) via `user-notifications.yml`  
-**Secrets:** `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SENDGRID_API_KEY`, `ADMIN_EMAIL`
+**Secrets:** `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, `ADMIN_EMAIL`
 
 Features:
 - Queries `auth.users` table for registrations in last 24 hours
 - Filters out demo account (`demo@wealthforge.ai`)
-- Sends formatted email notification to admin if new users found
+- Sends formatted email notification to admin via Resend if new users found
 - Silent success if no new registrations
 
-**Setup required:** See `SENDGRID_SETUP.md` in repo root.
+**Setup required:** See `RESEND_SETUP.md` in repo root.
 
 ---
 
@@ -105,7 +105,7 @@ GitHub Secrets (Settings → Secrets and variables → Actions):
 |--------|---------|-------------|
 | `SUPABASE_URL` | All scripts | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | All scripts | Admin access to bypass RLS |
-| `SENDGRID_API_KEY` | check-new-users | SendGrid API key for emails |
+| `RESEND_API_KEY` | check-new-users | Resend API key for emails |
 | `ADMIN_EMAIL` | check-new-users | Recipient for notifications |
 
 ⚠️ **Never commit secrets to git!** Always use GitHub Actions secrets.
@@ -123,9 +123,9 @@ GitHub Secrets (Settings → Secrets and variables → Actions):
 - Verify migrations are applied (tables exist)
 
 ### Email not sent
-- Check SendGrid API key is valid
-- Verify sender email is verified in SendGrid dashboard
-- See `SENDGRID_SETUP.md` for detailed troubleshooting
+- Check Resend API key is valid
+- Verify sender email is verified in Resend dashboard
+- See `RESEND_SETUP.md` for detailed troubleshooting
 
 ### Workflow doesn't run on schedule
 - GitHub may delay scheduled workflows by 5-15 minutes (normal)
