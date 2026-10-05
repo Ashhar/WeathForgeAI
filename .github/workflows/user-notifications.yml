@@ -30,30 +30,12 @@ jobs:
 
       - name: Send email notification via Resend
         if: steps.check.outputs.has_new_users == 'true'
-        run: |
-          echo "Sending email to: ${{ secrets.ADMIN_EMAIL }}"
-          echo "Subject: ${{ steps.check.outputs.email_subject }}"
-
-          response=$(curl -s -w "\n%{http_code}" -X POST 'https://api.resend.com/emails' \
-            -H 'Authorization: Bearer ${{ secrets.RESEND_API_KEY }}' \
-            -H 'Content-Type: application/json' \
-            -d "{
-              \"from\": \"WealthForge AI <ashhar@gmail.com>\",
-              \"to\": [\"${{ secrets.ADMIN_EMAIL }}\"],
-              \"subject\": \"${{ steps.check.outputs.email_subject }}\",
-              \"text\": \"${{ steps.check.outputs.email_body }}\"
-            }")
-
-          http_code=$(echo "$response" | tail -n1)
-          body=$(echo "$response" | sed '$d')
-
-          echo "Response code: $http_code"
-          echo "Response body: $body"
-
-          if [ "$http_code" -ne 200 ]; then
-            echo "❌ Failed to send email. Status: $http_code"
-            exit 1
-          fi
+        run: node scripts/send-email.mjs
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          EMAIL_SUBJECT: ${{ steps.check.outputs.email_subject }}
+          EMAIL_BODY: ${{ steps.check.outputs.email_body }}
 
       - name: Notification sent
         if: steps.check.outputs.has_new_users == 'true'

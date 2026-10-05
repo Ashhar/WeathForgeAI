@@ -36,15 +36,28 @@ Updates real-time stock prices for user portfolios.
 ### `check-new-users.mjs` ✨ NEW
 **Purpose:** Monitor new user registrations and send email notifications  
 **Schedule:** Daily at 3:30 AM UTC (9:00 AM IST) via `user-notifications.yml`  
-**Secrets:** `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, `ADMIN_EMAIL`
+**Secrets:** `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
 
 Features:
 - Queries `auth.users` table for registrations in last 24 hours
 - Filters out demo account (`demo@wealthforge.ai`)
-- Sends formatted email notification to admin via Resend if new users found
+- Outputs formatted email data for notification
 - Silent success if no new registrations
 
 **Setup required:** See `RESEND_SETUP.md` in repo root.
+
+---
+
+### `send-email.mjs` ✨ NEW
+**Purpose:** Send email notifications via Resend API  
+**Called by:** `user-notifications.yml` workflow  
+**Secrets:** `RESEND_API_KEY`, `ADMIN_EMAIL`
+
+Features:
+- Sends email via Resend REST API
+- Proper JSON handling for special characters and newlines
+- Detailed error reporting if send fails
+- Returns Resend email ID for tracking
 
 ---
 
