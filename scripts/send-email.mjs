@@ -26,7 +26,7 @@ async function sendEmail() {
     console.log('');
 
     const payload = {
-      from: 'WealthForge AI <ashhar@gmail.com>',
+      from: 'WealthForge AI <onboarding@resend.dev>',
       to: [ADMIN_EMAIL],
       subject: EMAIL_SUBJECT,
       text: EMAIL_BODY
