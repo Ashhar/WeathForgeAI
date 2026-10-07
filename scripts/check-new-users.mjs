@@ -20,11 +20,11 @@ async function checkNewUsers() {
   try {
     console.log('🔍 Checking for new user registrations in the last 24 hours...\n');
 
-    // Query auth.users for registrations in last 24 hours
-    // Filter out demo account
-    const query = `created_at.gte.${new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()}`;
+    // Calculate 24 hours ago timestamp
+    const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
 
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?${query}`, {
+    // Fetch all users (Auth Admin API doesn't support date filtering in query params)
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
       method: 'GET',
       headers: {
         apikey: SERVICE_KEY,
@@ -40,10 +40,14 @@ async function checkNewUsers() {
     const data = await res.json();
     const users = data.users || [];
 
-    // Filter out demo account
-    const newUsers = users.filter(u =>
-      u.email && !u.email.includes('demo@wealthforge.ai')
-    );
+    // Filter for users created in last 24 hours AND exclude demo account
+    const newUsers = users.filter(u => {
+      if (!u.email || u.email.includes('demo@wealthforge.ai')) {
+        return false;
+      }
+      const userCreatedAt = new Date(u.created_at).getTime();
+      return userCreatedAt >= twentyFourHoursAgo;
+    });
 
     if (newUsers.length === 0) {
       console.log('✓ No new user registrations in the last 24 hours.');
